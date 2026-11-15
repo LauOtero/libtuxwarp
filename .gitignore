@@ -23,8 +23,8 @@ install_manifest.txt
 *.dylib
 *.dll
 *.exe
-chronosrt_bench
-chronosrt_test
+bench
+test
 
 # Test / benchmark output
 test_results/

@@ -60,9 +60,9 @@ static int et_get_mac(int fd, const char* ifname, uint8_t mac[6]) {
     return 0;
 }
 
-ChronosRT_status_t et_socket_open(et_port_t* port, const char* ifname) {
+status_t et_socket_open(et_port_t* port, const char* ifname) {
     if (port == NULL || ifname == NULL || ifname[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     memset(port, 0, sizeof(*port));
@@ -70,28 +70,28 @@ ChronosRT_status_t et_socket_open(et_port_t* port, const char* ifname) {
 
     unsigned ifindex = if_nametoindex(ifname);
     if (ifindex == 0u) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
-    int fd = socket(AF_PACKET, SOCK_RAW, htons((uint16_t)ChronosRT_ET_ETHERTYPE));
+    int fd = socket(AF_PACKET, SOCK_RAW, htons((uint16_t)ET_ETHERTYPE));
     if (fd < 0) {
         /* Sin privilegios (CAP_NET_RAW) o interfaz inexistente. */
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     struct sockaddr_ll addr;
     memset(&addr, 0, sizeof(addr));
     addr.sll_family = AF_PACKET;
-    addr.sll_protocol = htons((uint16_t)ChronosRT_ET_ETHERTYPE);
+    addr.sll_protocol = htons((uint16_t)ET_ETHERTYPE);
     addr.sll_ifindex = (int)ifindex;
     if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         close(fd);
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     if (et_get_mac(fd, ifname, port->mac) < 0) {
         close(fd);
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     struct packet_mreq mreq;
@@ -153,7 +153,7 @@ ChronosRT_status_t et_socket_open(et_port_t* port, const char* ifname) {
     port->ifindex = (int)ifindex;
     strncpy(port->ifname, ifname, sizeof(port->ifname) - 1);
     port->ifname[sizeof(port->ifname) - 1] = '\0';
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
 void et_socket_close(et_port_t* port) {
@@ -641,8 +641,8 @@ int et_socket_recv(et_port_t* port, uint8_t* frame, uint32_t bufsize,
 
         /* Verificar si la trama es EtherTux */
         uint16_t eth_type = (uint16_t)((frame[12] << 8) | frame[13]);
-        if (eth_type == ChronosRT_ET_ETHERTYPE) {
-            if (n < (ssize_t)(ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE)) {
+        if (eth_type == ET_ETHERTYPE) {
+            if (n < (ssize_t)(ET_ETH_HDR_SIZE + ET_HEADER_SIZE)) {
                 continue;   /* ajena o muy corta: sigue drenando */
             }
             port->frames_rx++;

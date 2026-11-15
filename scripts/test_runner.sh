@@ -8,7 +8,7 @@
 # Ejemplos:
 #   ./scripts/test_runner.sh --sbc rpi5
 #   ./scripts/test_runner.sh --detect --mode full --duration 30
-#   ./scripts/test_runner.sh --sbc bpi-m2-zero --mode quick
+#   ./scripts/test_runner.sh --sbc rpi5 --mode quick
 #   ./scripts/test_runner.sh --sbc x86-64 --ctest-only
 # =============================================================================
 set -euo pipefail
@@ -28,7 +28,7 @@ CTEST_ONLY=0
 
 usage() {
     cat <<'EOF'
-ChronosRT test runner
+libtuxwarp test runner
 
 Uso:
   test_runner.sh [--sbc ID | --detect | --list] [opciones]
@@ -118,7 +118,7 @@ SUMMARY="$OUTPUT_DIR/summary.txt"
 
 log ""
 log "=============================================================="
-log " ChronosRT Test Runner — $SBC_NAME ($SBC_ID)"
+log " libtuxwarp Test Runner — $SBC_NAME ($SBC_ID)"
 log "=============================================================="
 log " Build      : $BUILD_DIR"
 log " Modo       : $MODE    Duración: ${DURATION}s"
@@ -245,10 +245,10 @@ audit_environment() {
     fi
 
     # 9. Protocolo seleccionado
-    local proto="${CHRONOSRT_PROTOCOL:-<sin definir>}"
+    local proto="${PROTOCOL:-<sin definir>}"
     case "$proto" in
         ethertux|ethercat) record PASS protocol "$proto" ;;
-        "<sin definir>")   record WARN protocol "CHRONOSRT_PROTOCOL no definido (defecto: ethercat)" ;;
+        "<sin definir>")   record WARN protocol "PROTOCOL no definido (defecto: ethercat)" ;;
         *)                 record WARN protocol "valor no válido: $proto" ;;
     esac
 
@@ -282,9 +282,9 @@ run_tests() {
         # Sin ctest: se ejecutan todas las suites presentes.
         local ok=1 found=0 bin
         : > "$logf"
-        for bin in chronosrt_test chronosrt_test_lockfree chronosrt_test_rt \
-                   chronosrt_test_resilience chronosrt_test_integration \
-                   chronosrt_test_network chronosrt_test_hwaccel chronosrt_test_ethertux; do
+        for bin in test test_lockfree test_rt \
+                   test_resilience test_integration \
+                   test_network test_hwaccel test_ethertux; do
             [ -x "$BUILD_DIR/$bin" ] || continue
             found=$((found + 1))
             if "$BUILD_DIR/$bin" >>"$logf" 2>&1; then
@@ -303,9 +303,9 @@ run_tests() {
 # --- Benchmarks --------------------------------------------------------------
 run_benchmarks() {
     [ "$RUN_BENCH" -eq 1 ] || return 0
-    local bench="$BUILD_DIR/chronosrt_bench"
+    local bench="$BUILD_DIR/bench"
     if [ ! -x "$bench" ]; then
-        log "--- Benchmarks: omitidos (chronosrt_bench no compilado) ---"
+        log "--- Benchmarks: omitidos (bench no compilado) ---"
         log ""
         return 0
     fi
@@ -355,7 +355,7 @@ fi
 
 # --- Resumen -----------------------------------------------------------------
 {
-    echo "ChronosRT — resumen de ejecución"
+    echo "libtuxwarp — resumen de ejecución"
     echo "Fecha      : $(date '+%Y-%m-%d %H:%M:%S')"
     echo "SBC        : $SBC_ID ($SBC_NAME, $SBC_SOC/$SBC_CPU)"
     echo "Build      : $BUILD_DIR"

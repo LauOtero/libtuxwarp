@@ -1,10 +1,10 @@
-# Arquitectura de ChronosRT Master
+# Arquitectura de libtuxwarp
 
 **Versión:** 0.1.0 · **ABI:** `0x000100` · **Lenguaje:** C11
 
 ## 1. Resumen ejecutivo
 
-ChronosRT Master es una **biblioteca de tiempo real determinista para Linux** que
+libtuxwarp es una **biblioteca de tiempo real determinista para Linux** que
 convierte una SBC ARM64/ARMv7 o un equipo x86-64 en un nodo de comunicación
 industrial. No es un kernel ni sustituye a PREEMPT_RT: es la capa de usuario que
 explota un kernel RT ya ajustado y **degrada de forma controlada** cuando falta
@@ -21,7 +21,7 @@ Su superficie cubre cuatro pilares:
 
 Estado verificado en el host de referencia (AMD Ryzen 7 4800H, Linux 7.2.11,
 GCC 16.2.1, CMake 4.4.4): build `Release` **0 errores / 0 warnings**, `ctest`
-**10/10 suites**, **547 aserciones**, **320 símbolos `ChronosRT_*`**.
+**10/10 suites**, **547 aserciones**, **320 símbolos `*`**.
 
 ---
 
@@ -29,7 +29,7 @@ GCC 16.2.1, CMake 4.4.4): build `Release` **0 errores / 0 warnings**, `ctest`
 
 | Métrica | Objetivo de diseño | Nota |
 |---|---|---|
-| Latencia de eventos | < 10 µs | Medible con `chronosrt_bench --mode latency`; depende del kernel/aislamiento |
+| Latencia de eventos | < 10 µs | Medible con `bench --mode latency`; depende del kernel/aislamiento |
 | Throughput interno | > 10 M eventos/s | Objetivo del runtime de eventos |
 | Jitter (σ) | < 1 µs | Requiere PREEMPT_RT + `isolcpus`/`nohz_full` |
 | Uso de CPU | < 5 % nominal | En operación event-driven |
@@ -39,7 +39,7 @@ Los valores de latencia/jitter **no se midieron en el host de verificación**
 (kernel `PREEMPT_DYNAMIC`, sin RT y sin permisos de red). El proyecto publica
 mediciones reales de coste de CPU por trama y de la HAL; los objetivos de
 latencia del protocolo proceden de la especificación EtherTux y se validan en
-cada plataforma con `chronosrt_bench` y `rtla`/`cyclictest`.
+cada plataforma con `bench` y `rtla`/`cyclictest`.
 
 ---
 
@@ -49,7 +49,7 @@ cada plataforma con `chronosrt_bench` y `rtla`/`cyclictest`.
 flowchart TB
     app["Aplicación (C11)<br/>init/shutdown · eventos · benchmark · métricas"]
 
-    api["Superficie pública (ABI C)<br/>chronosrt.h · kernel · sched · rt · mem · ring · mpmc · bounded<br/>resilience · obs · simd · hwaccel · protocol · ethercat · ethertux"]
+    api["Superficie pública (ABI C)<br/>libtuxwarp.h · kernel · sched · rt · mem · ring · mpmc · bounded<br/>resilience · obs · simd · hwaccel · protocol · ethercat · ethertux"]
 
     subgraph protocols["Protocolos (mutuamente excluyentes)"]
         direction LR
@@ -59,7 +59,7 @@ flowchart TB
 
     runtime["Runtime y servicios<br/>eventos · pools · SCHED_* · histograma/watchdog · resiliencia · obs"]
 
-    hal["HAL de aceleración (runtime)<br/>CRC-32C (SSE4.2 / ARMv8.1 / slice-by-8) · RS SIMD · PHC/LaunchTime"]
+    hal["HAL de aceleración (runtime)<br/>CRC-32C (SSE4.2 / ARMv8.1 / slice-by-16) · RS SIMD · PHC/LaunchTime"]
 
     platform["Plataforma: detección de kernel<br/>versión · PREEMPT_RT · isolcpus/nohz_full/rcu_nocbs · EEVDF<br/>sched_ext · io_uring · AF_XDP · SCHED_DEADLINE · memfd_secret"]
 
@@ -72,22 +72,22 @@ flowchart TB
 
 ## 4. Estructura del código
 
-`src/` se organiza **por subsistema**; `include/chronosrt/` mantiene una
+`src/` se organiza **por subsistema**; `include/libtuxwarp/` mantiene una
 superficie pública **plana y estable** para no romper los `#include`.
 
 | Ruta | Responsabilidad |
 |---|---|
-| `src/core/` | `chronosrt_core` (eventos), `_mem`, `_sched`, `_rt`, `_resilience`, `_obs` |
-| `src/platform/` | `chronosrt_kernel.c`: sondeo y validación del kernel |
-| `src/hwaccel/` | `chronosrt_hwaccel.c`: CRC-32C, GF(2^8), Reed-Solomon, PHC |
-| `src/protocols/` | `chronosrt_protocol.c` (selección) |
+| `src/core/` | `core` (eventos), `_mem`, `_sched`, `_rt`, `_resilience`, `_obs` |
+| `src/platform/` | `kernel.c`: sondeo y validación del kernel; `net_probe.c`: detección y validación universal de red de 3 capas |
+| `src/hwaccel/` | `hwaccel.c`: CRC-32C, GF(2^8), Reed-Solomon, PHC |
+| `src/protocols/` | `protocol.c` (selección) |
 | `src/protocols/ethercat/` | `ec_frame`, `ec_socket`, `ec_master`, `ec_slave`, `ec_dc`, `ec_mailbox` |
 | `src/protocols/ethertux/` | `et_frame`, `et_fec`, `et_qos`, `et_sched`, `et_esm`, `et_sync`, `et_topology`, `et_mbx`, `et_flowagg`, `et_frm`, `et_aalid`, `et_socket`, `et_master` |
-| `src/integration/` | `chronosrt_bridge.c`: puente genérico hacia un *sink* externo |
-| `src/simd/` | `chronosrt_simd.c`: *batch zero/copy* y *hash* vectorizados |
-| `src/benchmark/` | `chronosrt_benchmark.c`: motor de benchmarking |
-| `tools/benchmark.c` | CLI `chronosrt_bench` |
-| `tests/` | 10 suites de `ctest` |
+| `src/integration/` | `bridge.c`: puente genérico hacia un *sink* externo |
+| `src/simd/` | `simd.c`: *batch zero/copy* y *hash* vectorizados |
+| `src/benchmark/` | `benchmark.c`: motor de benchmarking |
+| `tools/benchmark.c` | CLI `bench` |
+| `tests/` | 11 suites de `ctest` |
 
 ---
 
@@ -135,22 +135,22 @@ superficie pública **plana y estable** para no romper los `#include`.
 
 ## 6. Estructuras lock-free
 
-### 6.1 Ring SPSC (`chronosrt_ring.h`)
+### 6.1 Ring SPSC (`ring.h`)
 
 ```c
-typedef struct ChronosRT_ring {
-    _Alignas(CHRONOSRT_CACHELINE) void* buffer[RING_CAPACITY];  /* 4096 */
-    _Alignas(CHRONOSRT_CACHELINE) _Atomic uint32_t head;
+typedef struct ring {
+    _Alignas(CACHELINE) void* buffer[RING_CAPACITY];  /* 4096 */
+    _Alignas(CACHELINE) _Atomic uint32_t head;
     _Atomic uint32_t tail;
     _Atomic uint32_t count;
-} ChronosRT_ring_t;
+} ring_t;
 ```
 
 - `_Alignas(64)` en el buffer y en los índices evita *false sharing*.
 - *Software prefetch* de la celda siguiente en `push`/`pop` (PF-7).
 - Un solo productor y un solo consumidor: sin CAS.
 
-### 6.2 Cola MPMC acotada (`chronosrt_bounded.h`)
+### 6.2 Cola MPMC acotada (`bounded.h`)
 
 Algoritmo de **D. Vyukov**: celdas pre-asignadas con `sequence`, índices
 monótonos y `acquire/release`.
@@ -159,7 +159,7 @@ monótonos y `acquire/release`.
 - Sin ABA (no hay `free` de nodos en el camino caliente).
 - Es la cola usada por el pool de memoria y por el runtime.
 
-La cola **Michael-Scott** (`chronosrt_mpmc.h`) se conserva como implementación de
+La cola **Michael-Scott** (`mpmc.h`) se conserva como implementación de
 referencia y material didáctico; no se usa en el camino caliente porque asigna
 un nodo por `push` y libera en `pop` (riesgo de ABA).
 
@@ -170,9 +170,9 @@ un nodo por `push` y libera en `pop` (riesgo de ABA).
 ### 7.1 Pools pre-asignados
 
 ```c
-typedef struct ChronosRT_mem_pool ChronosRT_mem_pool_t;   /* opaco */
+typedef struct mem_pool mem_pool_t;   /* opaco */
 
-ChronosRT_mem_pool_t* ChronosRT_mem_pool_create_ex(uint32_t pool_size,
+mem_pool_t* mem_pool_create_ex(uint32_t pool_size,
                                                    uint32_t block_size,
                                                    bool hugepage,
                                                    bool numa_local);
@@ -180,15 +180,15 @@ ChronosRT_mem_pool_t* ChronosRT_mem_pool_create_ex(uint32_t pool_size,
 
 - Bloques alineados a línea de caché.
 - *Free-list* lock-free (sin ABA).
-- `ChronosRT_mem_pool_prefault()` toca todos los bloques para eliminar *page
+- `mem_pool_prefault()` toca todos los bloques para eliminar *page
   faults* en el camino caliente.
-- `ChronosRT_mem_lock_all()` aplica `mlockall(MCL_CURRENT|MCL_FUTURE)`.
+- `mem_lock_all()` aplica `mlockall(MCL_CURRENT|MCL_FUTURE)`.
 
 ### 7.2 Hugepages y NUMA
 
 - Hugepages transparentes de 2 MB (`MADV_HUGEPAGE`) y `vm.nr_hugepages` para
   páginas explícitas.
-- `ChronosRT_mem_current_numa_node()` y `mbind` para asignación local al nodo.
+- `mem_current_numa_node()` y `mbind` para asignación local al nodo.
 - El objetivo es reducir TLB misses y tráfico inter-socket.
 
 ---
@@ -199,20 +199,20 @@ ChronosRT_mem_pool_t* ChronosRT_mem_pool_create_ex(uint32_t pool_size,
 
 | Política | Uso | API |
 |---|---|---|
-| `SCHED_DEADLINE` | Hilos periódicos con presupuesto y admisión | `ChronosRT_sched_set_deadline_current` |
-| `SCHED_FIFO` | *Fallback* o hilos de prioridad fija | `ChronosRT_sched_set_fifo_current` |
-| Afinidad | Fijar el hilo a un núcleo aislado | `ChronosRT_sched_set_affinity_current` |
-| `timerfd` | Tick periódico sin `usleep` | `ChronosRT_tick_init/wait` |
+| `SCHED_DEADLINE` | Hilos periódicos con presupuesto y admisión | `sched_set_deadline_current` |
+| `SCHED_FIFO` | *Fallback* o hilos de prioridad fija | `sched_set_fifo_current` |
+| Afinidad | Fijar el hilo a un núcleo aislado | `sched_set_affinity_current` |
+| `timerfd` | Tick periódico sin `usleep` | `tick_init/wait` |
 
 ### 8.2 Aislamiento verificado
 
-`ChronosRT_sched_isolation_probe()` lee `/proc/cmdline` y comprueba
+`sched_isolation_probe()` lee `/proc/cmdline` y comprueba
 `isolcpus`, `nohz_full` y `rcu_nocbs`; `strict_ok` exige los tres tokens con CPUs
-válidas. `ChronosRT_sched_isolation_print()` avisa por cada núcleo no aislado.
+válidas. `sched_isolation_print()` avisa por cada núcleo no aislado.
 
 ### 8.3 Kernel 7.x
 
-El módulo `chronosrt_kernel` detecta:
+El módulo `kernel` detecta:
 
 - versión (`uname` + `sscanf`);
 - PREEMPT_RT (`/sys/kernel/realtime`, `/proc/version`,
@@ -222,7 +222,7 @@ El módulo `chronosrt_kernel` detecta:
   **`io_uring`**, **AF_XDP**, **`SCHED_DEADLINE`**, **`memfd_secret`**.
 
 `support_level`: `0` no soportado, `1` básico, `2` tiempo real, `3` kernel 7.x
-pleno. `ChronosRT_init` avisa si no hay PREEMPT_RT sin cambiar la semántica de
+pleno. `init` avisa si no hay PREEMPT_RT sin cambiar la semántica de
 éxito.
 
 ---
@@ -324,14 +324,13 @@ sin `#if` en el código de aplicación.
 
 | Operación | ARMv8.1+ | ARMv7 | x86-64 |
 |---|---|---|---|
-| CRC-32C | `crc32cb/c/h/w/x` | *slice-by-8* | `crc32` SSE4.2, 4 flujos |
+| CRC-32C | `crc32cb/c/h/w/x` | *slice-by-16* | `crc32` SSE4.2, 4 flujos |
 | GF(2^8) / RS | NEON | escalar | AVX2 |
 | PHC / Launch Time | `ETHTOOL_GET_TS_INFO` | igual | igual |
 
 Se usa **CRC-32C (Castagnoli)** porque es el único polinomio acelerado por
-instrucción en ambas arquitecturas. La única SBC de la matriz sin CRC32 por
-hardware es la **Banana Pi M2 Zero** (Cortex-A7), que cae al *fallback*
-software.
+instrucción en ambas arquitecturas. Las SBC sin CRC32 por instrucción caen al
+*fallback* software al carecer de soporte de instrucción dedicado.
 
 Capacidades publicadas: `crc32c_hw`, `crc32c_backend`, `fec_simd`,
 `fec_backend`, `armv8_crypto`, `phc`, `launch_time`, vendor/marca/familia/modelo
@@ -344,7 +343,7 @@ VAES, SHA, AES, BMI2, ADX).
 
 | Mecanismo | Implementación |
 |---|---|
-| Snapshot A/B | `ChronosRT_snapshot_*` con *seqlock* y doble búfer |
+| Snapshot A/B | `snapshot_*` con *seqlock* y doble búfer |
 | WAL | CRC por entrada, `fsync` por lotes, `replay` que se detiene en la primera entrada corrupta |
 | Golden image | `<path>.tmp` → `fsync` → `rename` atómico |
 | Watchdog | SW con `last_kick_ns` + detección de `/dev/watchdog` |
@@ -355,11 +354,11 @@ VAES, SHA, AES, BMI2, ADX).
 
 ## 13. Integración con `libtuxrt_core`
 
-- Espacios de nombres disjuntos: `ChronosRT_*` frente a `tuxrt_*`.
-- ChronosRT se publica como **proveedor** exportando
+- Espacios de nombres disjuntos: `*` frente a `tuxrt_*`.
+- libtuxwarp se publica como **proveedor** exportando
   `tuxrt_provider_descriptor`; **no** enlaza contra `libtuxrt_core`.
 - El consumidor lo descubre con `dlopen`/`dlsym`.
-- El puente `ChronosRT_bridge_*` drena eventos y los entrega a un *sink*
+- El puente `bridge_*` drena eventos y los entrega a un *sink*
   genérico; no hay puente inverso.
 
 ---
@@ -369,7 +368,7 @@ VAES, SHA, AES, BMI2, ADX).
 ### 14.1 Cotas de diseño (no verificadas en este host)
 
 Valores del análisis inicial del proyecto. **No son mediciones** y no deben
-usarse como certificación: el WCET real se obtiene con `ChronosRT_hist_*` y
+usarse como certificación: el WCET real se obtiene con `hist_*` y
 `rtla`/`cyclictest` en la plataforma objetivo.
 
 | Operación | Cota de diseño |
@@ -384,7 +383,7 @@ usarse como certificación: el WCET real se obtiene con `ChronosRT_hist_*` y
 ### 14.2 Coste medido por trama (sin NIC)
 
 Host: AMD Ryzen 7 4800H (Zen 2), Linux 7.2.11, `Release` `-O3`, con
-`-march=native`, `chronosrt_bench --mode frame`, descontando el bucle vacío.
+`-march=native`, `bench --mode frame`, descontando el bucle vacío.
 
 | Operación | 64 B | 512 B | 1464 B |
 |---|---:|---:|---:|
@@ -432,7 +431,6 @@ el techo físico es ~82 k tramas/s; con tramas de control de 20 B asciende a
 | **Jetson Nano/Orin** | ARM64; Orin (A78AE) con SVE en compiladores que lo soportan; contador de ciclos vía `perf_event_open` |
 | **Orange Pi 5 / ROCK 5B** | RK3588 (A76+A55); NEON; `rk2_crypto` aún en parcheo, no usar en camino crítico |
 | **Intel NUC / x86-64 RT** | AVX2 o AVX-512 según CPU; CRC-32C SSE4.2; PHC/Launch Time en i210/i225/i226 |
-| **Banana Pi M2 Zero** | Cortex-A7 sin CRC32 por hardware: *fallback* software |
 
 La matriz completa (29 perfiles) vive en `scripts/lib/sbc.sh` y se consulta con
 `./scripts/build.sh --list`.
@@ -451,16 +449,16 @@ Resultado en el host de referencia:
 
 | Suite | Aserciones |
 |---|---:|
-| `chronosrt_test` | 20 |
-| `chronosrt_test_lockfree` | 26 |
-| `chronosrt_test_rt` | 30 |
-| `chronosrt_test_resilience` | 29 |
-| `chronosrt_test_integration` | 27 |
-| `chronosrt_test_network` | 58 |
-| `chronosrt_test_hwaccel` | 40 |
-| `chronosrt_test_ethertux` | 103 |
-| `chronosrt_test_ethertux_v010` | 152 |
-| `chronosrt_test_aalid` | 62 |
+| `test` | 20 |
+| `test_lockfree` | 26 |
+| `test_rt` | 30 |
+| `test_resilience` | 29 |
+| `test_integration` | 27 |
+| `test_network` | 58 |
+| `test_hwaccel` | 40 |
+| `test_ethertux` | 103 |
+| `test_ethertux_v010` | 152 |
+| `test_aalid` | 62 |
 | **Total** | **547** |
 
 Los detalles de protocolo están en el [Manual Técnico §11](MANUAL_TECNICO.md)

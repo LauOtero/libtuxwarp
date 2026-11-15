@@ -1,4 +1,4 @@
-# Guía de Portación — ChronosRT Master
+# Guía de Portación — libtuxwarp
 
 **Versión:** 0.1.0 · **Lenguaje:** C11 · **Build:** CMake ≥ 3.16
 
@@ -8,7 +8,7 @@
 
 | Componente | Requisito |
 |---|---|
-| CPU | ARM64 (AArch64), ARMv7 o x86-64 con SIMD |
+| CPU | ARM64 (AArch64) con CRC32 por instrucción, ARMv7 con fallback *slice-by-16*, o x86-64 con SIMD |
 | RAM | 256 MB |
 | Almacenamiento | 50 MB |
 | Red | 1 Gbps recomendado; NIC dedicada para EtherCAT/EtherTux |
@@ -19,10 +19,10 @@
 |---|---|---|
 | Compilador | GCC 11 / Clang 15 | GCC 13+ / Clang 17+ |
 | CMake | 3.16 | 3.25+ |
-| Linux | 5.15 | 7.x con PREEMPT_RT |
+| Linux | 4.15+ (kernel_probe detecta soporte) | 7.x con PREEMPT_RT |
 | Bibliotecas | `pthread`, `m`, `dl` | glibc 2.31+ |
 
-Dependencias de ejecución de los protocolos: **solo** `glibc` + `libchronosrt.so`.
+Dependencias de ejecución de los protocolos: **solo** `glibc` + `liblibtuxwarp.so`.
 No se usa SOEM, IgH, DPDK ni libbpf.
 
 ---
@@ -43,8 +43,7 @@ Familias cubiertas:
 - **Raspberry Pi:** Zero 2 W, 3, 4, 5, CM4, CM5
 - **Orange Pi:** Zero2, Zero3, 3 LTS, 4 LTS, 5, 5 Plus
 - **BigTreeTech / MKS:** CB1, CB2, PI, Skipr
-- **Radxa / Rock:** Rock Pi 4, Rock 3, Rock 5
-- **Banana Pi / Libre Computer:** M2 Zero, M4, M5, Le Potat, Renegade, Sweet Potato
+- **Radxa / Rock:** Rock Pi 4, Rock 3 y Rock 5
 - **NVIDIA:** Jetson Nano, Jetson Orin
 - **x86-64:** genérico y con PREEMPT_RT
 
@@ -88,15 +87,6 @@ Familias cubiertas:
 ./scripts/build.sh --sbc x86-64 --native
 ```
 
-### 2.5 Banana Pi M2 Zero (caso especial)
-
-Cortex-A7 **sin instrucciones CRC32**. La HAL cae al *fallback* `slice-by-8`;
-la funcionalidad es completa, pero el coste de CPU del CRC es mayor.
-
-```bash
-./scripts/build.sh --sbc bpi-m2-zero
-```
-
 ---
 
 ## 3. Compilación
@@ -111,18 +101,22 @@ ctest --test-dir build --output-on-failure
 
 | Opción | Defecto | Descripción |
 |---|---|---|
-| `CHRONOSRT_BUILD_PROTOCOLS` | `ON` | Compila EtherCAT y EtherTux |
-| `CHRONOSRT_BUILD_TESTS` | `ON` | 10 suites de `ctest` |
-| `CHRONOSRT_BUILD_BENCHMARK` | `ON` | Ejecutable `chronosrt_bench` |
-| `CHRONOSRT_BUILD_TOOLS` | `ON` | Instala scripts de ayuda |
-| `CHRONOSRT_USE_SIMD` | `ON` | AVX-512 / AVX2 / NEON / SVE |
-| `CHRONOSRT_USE_HUGEPAGES` | `ON` | Soporte de *hugepages* |
-| `CHRONOSRT_ENABLE_LTO` | `ON` | *Link-time optimization* |
-| `CHRONOSRT_ENABLE_NATIVE` | `OFF` | `-march=native` (no portable) |
+| `BUILD_PROTOCOLS` | `ON` | Compila EtherCAT y EtherTux |
+| `BUILD_TESTS` | `ON` | 10 suites de `ctest` |
+| `BUILD_BENCHMARK` | `ON` | Ejecutable `bench` |
+| `BUILD_TOOLS` | `ON` | Instala scripts de ayuda |
+| `USE_SIMD` | `ON` | AVX-512 / AVX2 / NEON / SVE |
+| `USE_HUGEPAGES` | `ON` | Soporte de *hugepages* |
+| `ENABLE_LTO` | `ON` | *Link-time optimization* |
+| `ENABLE_NATIVE` | `OFF` | `-march=native` (no portable) |
 | `TUXRT_PROVIDER_MODULE_DIR` | autodetectado | Directorio con `TuxRTProvider.cmake` |
 
-La detección de AVX-512/AVX2 se hace **compilando y ejecutando** una prueba, no
-solo comprobando que el compilador acepta el flag (Zen 2 tiene AVX2 sin AVX-512).
+Detección de SIMD:
+- **AVX-512 / AVX2**: se activa mediante `check_csource_runs` (compilación y ejecución), no solo comprobando flags del compilador (en Zen 2 hay AVX2 sin AVX-512).
+- **NEON**: se activa mediante `check_csource_compiles` (solo compilación), obligatorio en AArch64.
+- **SVE**: se activa mediante `check_csource_compiles` con `__ARM_FEATURE_SVE`, disponible en Orin y posteriores.
+
+La tabla resultante se establece en tiempo de compilación y se lee en tiempo de ejecución a través de `hw_caps()`.
 
 ### 3.2 Cross-compilación
 
@@ -142,6 +136,12 @@ solo comprobando que el compilador acepta el flag (Zen 2 tiene AVX2 sin AVX-512)
 ```
 
 Toolchains incluidas: `cmake/aarch64-linux-gnu.cmake` y `cmake/jetson.cmake`.
+Estas definen `CMAKE_SYSTEM_PROCESSOR`, `CMAKE_C_COMPILER` y flags `-march=armv8-a` (aarch64) o `-march=armv7-a+neon-vfpv4` (armv7).
+
+**Importante:** En cross-compilación, la detección de SIMD por `check_csource_runs` fallará (no hay CPU objetivo). En su lugar, se debe especificar manualmente:
+- `aarch64` con CRC32: `-march=armv8-a+crc` + backend `armv8-crc`
+- `aarch64` sin CRC32 HW (SBCs sin Ethernet nativo): `-march=armv7-a+neon-vfpv4` + fallback `slice-by-16`
+- `x86_64`: flags SSE4.2/AVX2/AVX-512 según CPU
 
 ---
 
@@ -168,12 +168,12 @@ cat /sys/kernel/realtime 2>/dev/null
 ```
 
 En kernels antiguos, instale el kernel `-rt` de su distribución o compile el
-parche. ChronosRT **detecta** el estado y avisa; no modifica el `cmdline`.
+parche. libtuxwarp **detecta** el estado y avisa; no modifica el `cmdline`.
 
 ### 4.2 Ajuste del sistema
 
 ```bash
-# /etc/sysctl.d/99-chronosrt.conf
+# /etc/sysctl.d/99-libtuxwarp.conf
 vm.swappiness = 0
 vm.zone_reclaim_mode = 0
 kernel.numa_balancing = 0
@@ -194,12 +194,12 @@ grep -i huge /proc/meminfo
 
 ## 5. Preparación de la red
 
-ChronosRT tiene **dos backends mutuamente excluyentes**. Elija uno por interfaz:
+libtuxwarp tiene **dos backends mutuamente excluyentes**. Elija uno por interfaz:
 
 ```bash
-export CHRONOSRT_PROTOCOL=ethercat   # defecto
+export PROTOCOL=ethercat   # defecto
 # o
-export CHRONOSRT_PROTOCOL=ethertux
+export PROTOCOL=ethertux
 ```
 
 ### 5.1 Interfaz
@@ -216,7 +216,7 @@ cat /sys/class/net/enp2s0/carrier      # 1 = cable conectado
 `AF_PACKET` requiere `CAP_NET_RAW` (y `CAP_NET_ADMIN` para promiscuo):
 
 ```bash
-sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
+sudo setcap cap_net_raw,cap_net_admin+ep ./build/bench
 # o ejecutar como root
 ```
 
@@ -229,12 +229,12 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
 ### 5.4 EtherTux
 
 - NIC y switch **comerciales**; red exclusiva para el lazo de control.
-- Si la NIC soporta PHC/Launch Time, `ChronosRT_hw_caps_for_interface()` lo
+- Si la NIC soporta PHC/Launch Time, `hw_caps_for_interface()` lo
   reporta y `send_at()` aplica *pacing* por hardware.
 - `PACKET_TX_RING` se activa en modo `AUTO` si el kernel lo permite.
 - El ID local determinista añade **≈ 14,4 KB** de RAM (tabla de 256 nodos +
   bitmap de 65 536 IDs) y no requiere privilegios; la persistencia necesita un
-  directorio escribible (p. ej. `/var/lib/chronosrt/`).
+  directorio escribible (p. ej. `/var/lib/libtuxwarp/`).
 
 ---
 
@@ -250,34 +250,34 @@ ctest --test-dir build --output-on-failure
 
 | Suite | Aserciones |
 |---|---:|
-| `chronosrt_test` | 20 |
-| `chronosrt_test_lockfree` | 26 |
-| `chronosrt_test_rt` | 30 |
-| `chronosrt_test_resilience` | 29 |
-| `chronosrt_test_integration` | 27 |
-| `chronosrt_test_network` | 58 |
-| `chronosrt_test_hwaccel` | 40 |
-| `chronosrt_test_ethertux` | 103 |
-| `chronosrt_test_ethertux_v010` | 152 |
-| `chronosrt_test_aalid` | 62 |
+| `test` | 20 |
+| `test_lockfree` | 26 |
+| `test_rt` | 30 |
+| `test_resilience` | 29 |
+| `test_integration` | 27 |
+| `test_network` | 58 |
+| `test_hwaccel` | 40 |
+| `test_ethertux` | 103 |
+| `test_ethertux_v010` | 152 |
+| `test_aalid` | 62 |
 | **Total** | **547** |
 
 ### 6.2 HAL
 
 ```bash
-./build/chronosrt_bench --mode crc --duration 1
+./build/bench --mode crc --duration 1
 ```
 
 Debe mostrar el backend esperado:
 
 - x86-64 con SSE4.2: `sse4.2-x4`.
 - ARMv8.1+: `armv8-crc`.
-- ARMv7 / Cortex-A7: `slice-by-8`.
+- ARMv7 / Cortex-A7: `slice-by-16`.
 
 ### 6.3 Kernel
 
 ```bash
-./build/chronosrt_bench --mode latency --duration 1 | head -n 12
+./build/bench --mode latency --duration 1 | head -n 12
 ```
 
 Debe indicar la versión, PREEMPT_RT, aislamiento y nivel de soporte (`0..3`).
@@ -285,11 +285,11 @@ Debe indicar la versión, PREEMPT_RT, aislamiento y nivel de soporte (`0..3`).
 ### 6.4 Protocolo (requiere hardware)
 
 ```bash
-sudo ./build/chronosrt_bench --mode latency --duration 5
+sudo ./build/bench --mode latency --duration 5
 ```
 
-Para una prueba real de bus, use la API de `chronosrt_ethercat.h` o
-`chronosrt_ethertux.h` (los tests no abren NIC porque requieren `CAP_NET_RAW`).
+Para una prueba real de bus, use la API de `ethercat.h` o
+`ethertux.h` (los tests no abren NIC porque requieren `CAP_NET_RAW`).
 
 ---
 
@@ -318,7 +318,7 @@ rtla timerlat top -d 30s
 ```bash
 ip -br link
 cat /sys/class/net/enp2s0/carrier
-sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
+sudo setcap cap_net_raw,cap_net_admin+ep ./build/bench
 ```
 
 ### 7.3 No se detectan esclavas EtherCAT
@@ -342,7 +342,7 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
 
 ```bash
 # x86 sin AVX-512: deshabilitar SIMD o dejar la detección automática
-cmake -S . -B build -DCHRONOSRT_USE_SIMD=OFF
+cmake -S . -B build -DUSE_SIMD=OFF
 
 # ARM64 sin toolchain
 sudo apt install gcc-aarch64-linux-gnu
@@ -351,7 +351,7 @@ sudo apt install gcc-aarch64-linux-gnu
 ### 7.7 `SCHED_FIFO`/`SCHED_DEADLINE` denegados
 
 ```bash
-sudo setcap cap_sys_nice=eip ./build/chronosrt_bench
+sudo setcap cap_sys_nice=eip ./build/bench
 # o
 echo "@user - rtprio 99" | sudo tee -a /etc/security/limits.conf
 ```
@@ -367,9 +367,9 @@ echo "@user - rtprio 99" | sudo tee -a /etc/security/limits.conf
 - [ ] IRQ de la NIC en núcleos aislados.
 - [ ] `CAP_NET_RAW`/`CAP_NET_ADMIN` para el binario.
 - [ ] Nombre real de la interfaz verificado (`ip -br link`).
-- [ ] Protocolo elegido (`CHRONOSRT_PROTOCOL`).
+- [ ] Protocolo elegido (`PROTOCOL`).
 - [ ] `ctest` 10/10 y 547 aserciones.
 - [ ] `--mode aalid` con candidato < 10 ns y admisión < 100 ns (si usa ID local).
 - [ ] `--mode crc` con backend HW (o *fallback* aceptado).
-- [ ] `ChronosRT_kernel_probe()` con `support_level >= 2`.
+- [ ] `kernel_probe()` con `support_level >= 2`.
 - [ ] Benchmark de referencia guardado para comparar regresiones.

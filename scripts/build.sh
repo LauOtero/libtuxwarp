@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/build.sh — Compilación de ChronosRT para las SBC de EtherTux
+# scripts/build.sh — Compilación de libtuxwarp para las SBC de EtherTux
 #
 # Perfiles soportados: los de la matriz §7.5 de docs/Protocolo EtherTux.md
 # (Raspberry Pi, Orange Pi, Radxa, Banana Pi, Libre Computer, Jetson, x86-64).
@@ -9,7 +9,7 @@
 #   ./scripts/build.sh --list                     # ver todas las SBC
 #   ./scripts/build.sh --detect                   # detectar esta máquina
 #   ./scripts/build.sh --sbc rpi5 --release       # cross-compilar para RPi 5
-#   ./scripts/build.sh --sbc bpi-m2-zero          # ARMv7 (sin CRC32 HW)
+#   ./scripts/build.sh --sbc opi-5               # ARM64 (con CRC32 HW)
 #   ./scripts/build.sh --sbc x86-64 --native      # compilación nativa
 #   ./scripts/build.sh --sbc opi-5 --print-config # ver flags sin compilar
 #   ./scripts/build.sh all                        # matriz representativa
@@ -42,7 +42,7 @@ ACTION="build"             # build | list | detect | print-config
 
 usage() {
     cat <<'EOF'
-ChronosRT build — compilación nativa y cruzada para SBC
+libtuxwarp build — compilación nativa y cruzada para SBC
 
 Uso:
   build.sh [--sbc ID | --detect | --list | all] [opciones]
@@ -52,7 +52,7 @@ Selección de objetivo:
   --detect         Detectar automáticamente la SBC en la que se ejecuta
   --list           Listar perfiles soportados y salir
   --print-config   Mostrar la configuración resuelta sin compilar
-  all              Matriz representativa: rpi5 + bpi-m2-zero + x86-64
+  all              Matriz representativa: rpi5 + opi-5 + x86-64
 
 Compilación:
   --release | --debug     Optimización (defecto: RelWithDebInfo)
@@ -61,7 +61,7 @@ Compilación:
   --toolchain FILE        Toolchain de CMake explícito
   --sysroot DIR           Sysroot para la compilación cruzada
   --cflags "FLAGS"        Flags C adicionales
-  --native-codegen        -DCHRONOSRT_ENABLE_NATIVE=ON (solo build nativo)
+  --native-codegen        -DENABLE_NATIVE=ON (solo build nativo)
   --jobs N                Paralelismo (defecto: nproc)
   --dir DIR               Directorio raíz de build (defecto: ./build)
   --clean                 Borra el directorio de build del objetivo
@@ -214,14 +214,14 @@ resolve_flags() {
 # Construye los argumentos de CMake para el objetivo cargado.
 cmake_args() {
     local a=("-S" "$PROJECT_ROOT" "-DCMAKE_BUILD_TYPE=$BUILD_TYPE")
-    a+=("-DCHRONOSRT_BUILD_PROTOCOLS=$PROTOCOLS_FINAL")
-    a+=("-DCHRONOSRT_BUILD_TESTS=$TESTS_FINAL")
-    a+=("-DCHRONOSRT_BUILD_BENCHMARK=$BENCH_FINAL")
+    a+=("-DBUILD_PROTOCOLS=$PROTOCOLS_FINAL")
+    a+=("-DBUILD_TESTS=$TESTS_FINAL")
+    a+=("-DBUILD_BENCHMARK=$BENCH_FINAL")
 
-    [ "$USE_SIMD" != "auto" ] && a+=("-DCHRONOSRT_USE_SIMD=$USE_SIMD")
-    [ "$USE_HUGEPAGES" -eq 1 ] && a+=("-DCHRONOSRT_USE_HUGEPAGES=ON")
-    [ -n "$USE_LTO" ] && a+=("-DCHRONOSRT_ENABLE_LTO=$USE_LTO")
-    [ "$NATIVE_CODEGEN" -eq 1 ] && a+=("-DCHRONOSRT_ENABLE_NATIVE=ON")
+    [ "$USE_SIMD" != "auto" ] && a+=("-DUSE_SIMD=$USE_SIMD")
+    [ "$USE_HUGEPAGES" -eq 1 ] && a+=("-DUSE_HUGEPAGES=ON")
+    [ -n "$USE_LTO" ] && a+=("-DENABLE_LTO=$USE_LTO")
+    [ "$NATIVE_CODEGEN" -eq 1 ] && a+=("-DENABLE_NATIVE=ON")
 
     if [ "$NEW_CROSS" -eq 1 ]; then
         if [ -n "$TOOLCHAIN" ]; then
@@ -270,7 +270,7 @@ build_one() {
     local dir="$OUTPUT_ROOT/$SBC_ID"
 
     log "=============================================================="
-    log " ChronosRT — $SBC_NAME ($SBC_ID)"
+    log " libtuxwarp — $SBC_NAME ($SBC_ID)"
     log "=============================================================="
     log " SoC        : $SBC_SOC / $SBC_CPU ($SBC_ARCH, ${SBC_CORES} cores)"
     log " CRC32 HW   : $SBC_CRC32    Crypto: $SBC_CRYPTO"
@@ -286,7 +286,7 @@ build_one() {
         log ""
         log "Runtime recomendado:"
         log "  cmdline : $(sbc_cmdline)"
-        log "  entorno : CHRONOSRT_PROTOCOL=ethertux"
+        log "  entorno : PROTOCOL=ethertux"
         if [ "$SBC_CRC32" = "no" ]; then
             log "  aviso   : sin CRC32 por instrucción; la HAL usará slice-by-8"
         fi
@@ -321,7 +321,7 @@ build_one() {
     log "  kernel cmdline: $(sbc_cmdline)"
     log "  governor      : performance"
     log "  IRQ Ethernet  : fijar a los núcleos aislados (chrt -f 90)"
-    log "  protocolo     : export CHRONOSRT_PROTOCOL=ethertux"
+    log "  protocolo     : export PROTOCOL=ethertux"
     [ "$SBC_CRC32" = "no" ] && log "  CRC32         : fallback software (slice-by-8)"
     [ -n "$SBC_NOTES" ] && log "  nota          : $SBC_NOTES"
     log ""
@@ -331,7 +331,7 @@ build_one() {
 case "$ACTION" in
     matrix)
         # Un objetivo por arquitectura; se omiten los que no tengan compilador.
-        for id in rpi5 bpi-m2-zero x86-64; do
+        for id in rpi5 opi-5 x86-64; do
             sbc_load "$id" || continue
             pkg="$(sbc_cross_pkg "$SBC_ARCH")"
             cc=""

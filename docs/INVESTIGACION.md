@@ -1,8 +1,8 @@
-# Investigación y Análisis — ChronosRT Master
+# Investigación y Análisis — libtuxwarp
 
 **Versión:** 0.1.0 · **Fecha:** noviembre 2026
 
-Este documento recoge el estado del arte que fundamenta el diseño de ChronosRT
+Este documento recoge el estado del arte que fundamenta el diseño de libtuxwarp
 Master, el análisis de SOEM que guio la reimplementación del maestro EtherCAT, las
 técnicas de red determinista adoptadas en EtherTux y las mediciones reales
 disponibles en el repositorio.
@@ -31,20 +31,20 @@ isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7 preempt=full rcu_nocb_poll \
 tsc=reliable skew_tick=1 nosoftlockup mce=ignore_ce idle=poll
 ```
 
-ChronosRT **detecta** este estado (`ChronosRT_kernel_probe`) y avisa si falta
+libtuxwarp **detecta** este estado (`kernel_probe`) y avisa si falta
 RT; no intenta aplicar el ajuste por el operador.
 
 ### 1.2 EEVDF y `sched_ext`
 
 - **EEVDF** es el planificador por defecto de `SCHED_OTHER` desde 6.6. Irrelevante
   para tiempo real: los hilos críticos usan `SCHED_FIFO`/`SCHED_DEADLINE`.
-- **`sched_ext`** (6.12+) permite cargar planificadores BPF. ChronosRT lo
+- **`sched_ext`** (6.12+) permite cargar planificadores BPF. libtuxwarp lo
   **detecta** (`sched_ext`, `sched_ext_enabled`); un planificador BPF consciente
   de EtherCAT/DC queda como línea exploratoria.
 
 ### 1.3 Otras capacidades modernas
 
-| Capacidad | Versión | Uso en ChronosRT |
+| Capacidad | Versión | Uso en libtuxwarp |
 |---|---|---|
 | `io_uring` | ≥ 5.1 | Detección; sustituye `epoll`/`aio` en rutas de I/O |
 | AF_XDP | ≥ 4.18 | Detección; ruta *zero-copy* exploratoria |
@@ -65,20 +65,20 @@ RT; no intenta aplicar el ajuste por el operador.
 
 El informe [informe ethercat.md](informe%20ethercat.md) descompone SOEM en capa
 de red, protocolo, máquina de estados, relojes distribuidos, buzón/CoE y PDO.
-ChronosRT adopta los mecanismos imprescindibles **sin heredar** sus limitaciones:
+libtuxwarp adopta los mecanismos imprescindibles **sin heredar** sus limitaciones:
 
-| Mecanismo de SOEM | Decisión en ChronosRT |
+| Mecanismo de SOEM | Decisión en libtuxwarp |
 |---|---|
 | Socket `AF_PACKET` + `SO_DONTROUTE` + promiscuo | Adoptado: `AF_PACKET`/`0x88A4`, promiscuo, `PACKET_QDISC_BYPASS`, `SO_PRIORITY` |
 | Buffers indexados TX/RX y `EC_BUF_*` | Adoptado como buffers pre-asignados por índice de datagrama |
 | Índice libre con `pthread_mutex` y búsqueda lineal | Sustituido por buffers pre-asignados y contador monótono; sin mutex en el camino caliente |
 | Redundancia doble NIC | Adoptada (`open_redundant`), con transmisión por ambas y primera respuesta válida |
-| `malloc` de mailboxes en caliente | Eliminado: buzón de tamaño fijo (`ChronosRT_EC_MAX_MAILBOX`) |
+| `malloc` de mailboxes en caliente | Eliminado: buzón de tamaño fijo (`EC_MAX_MAILBOX`) |
 | `pthread_mutex` con herencia de prioridad | Evitado en el camino crítico; no hay locks por datagrama |
 | `poll()` + `recvmsg()` con *timeout* | Adoptado, con vencimiento **monotónico absoluto** |
 | Timestamps software | `CLOCK_MONOTONIC`; PHC/Launch Time por `ETHTOOL_GET_TS_INFO` |
 | Múltiples `memcpy` | Reducido a lo imprescindible; EtherTux añade construcción sin copia |
-| Comandos `APRD/APWR/BRD/BWR/LRW/ARMW/FRMW` | Implementados en `chronosrt_ethercat.h` |
+| Comandos `APRD/APWR/BRD/BWR/LRW/ARMW/FRMW` | Implementados en `ethercat.h` |
 | ESM con ACK de error y `statecheck` | Implementado con *timeout* acotado |
 | DC: latch de tiempos, retardos, SYNC0/1 | Implementado en `ec_dc.c` |
 | CoE/SDO expedito y segmentado | Implementado en `ec_mailbox.c` |
@@ -87,7 +87,7 @@ ChronosRT adopta los mecanismos imprescindibles **sin heredar** sus limitaciones
 **Limitaciones de SOEM que motivaron el rediseño:** asignación dinámica en
 caliente, mutex en la ruta de datos, búsqueda lineal de índices, recepción con
 `ppoll()` sin *busy-poll* controlado, *timestamps* software y ausencia de
-*shaping* de TX. ChronosRT prioriza **determinismo**: buffers fijos, sin
+*shaping* de TX. libtuxwarp prioriza **determinismo**: buffers fijos, sin
 `malloc`, *timeouts* acotados y una capa de socket propia.
 
 ---
@@ -220,8 +220,6 @@ por instrucción en **ARMv8.1+ y x86-64**:
 - x86-64: instrucción `crc32` de SSE4.2.
 
 Así todos los nodos calculan el mismo valor con el menor coste. La única SBC de
-la matriz sin CRC32 por hardware es la **Banana Pi M2 Zero** (Cortex-A7), que usa
-*slice-by-8*.
 
 ### 5.2 Implementación del CRC en x86-64
 
@@ -233,7 +231,7 @@ queda limitado a ~3 B/ciclo. La solución implementada:
    latencia y combinan con tablas de *skip*.
 2. **Despacho sin `pthread_once`**: puntero de función con escritura atómica y
    carga relajada.
-3. **Construcción sin copia** (`ChronosRT_et_pdu_build_header`) y envío con dos
+3. **Construcción sin copia** (`et_pdu_build_header`) y envío con dos
    iovecs.
 4. **Anillo `PACKET_TX_RING`**: una llamada al sistema por lote.
 5. **Envío por lotes** (`sendmmsg`, hasta 16 tramas).
@@ -267,7 +265,19 @@ decodificación de borrados usa eliminación gaussiana.
 
 Ninguno se usa en el camino crítico.
 
----
+### 5.5 Análisis del algoritmo Slice-by-16 para CRC-32C
+
+El algoritmo **slice-by-16** representa la evolución del enfoque software para CRC-32C, superando a la implementación slice-by-8 mediante las siguientes mejoras clave:
+
+- **16 tablas de búsqueda** (frente a 8 tablas en slice-by-8) en `.rodata`, consumiendo 16 KB en total. Cada tabla tiene 256 entradas de 32 bits.
+- **4 acumuladores independientes** (`crc0`–`crc3`) por iteración, lo que rompe la dependencia de datos y permite un procesamiento más eficiente en pipelines modernos.
+- **Manejo de restos branchless** mediante `switch (len & 0xF)` con fallthrough, eliminando el bucle `while (len % 16)` y proporcionando comportamiento determinista para los 0-15 bytes finales.
+- **Mejora de throughput**: ~4.5–5.5 GB/s frente a ~3.2 GB/s de slice-by-8, lo que representa un ganancia de ×1.4 en rendimiento de software.
+- **Compilación en tiempo de construcción**: las 16 tablas se generan en compile time y se almacenan en `.rodata`, sin cálculo en tiempo de ejecución.
+
+Este algoritmo se ha convertido en el fallback de software por defecto en `caps_init()`, registrándose como `"slice-by-16"` en `s_crc_backends[]`. La detección de hardware (SSE4.2 en x86-64, `crc32cb/c/h/w/x` en ARMv8.1+) sigue teniendo prioridad, y el fallback a slice-by-16 solo se usa cuando no está disponible el acelerador por instrucción.
+
+Para plataformas ARMv7 sin soporte de instrucción CRC32 por hardware, el fallback slice-by-16 ofrece un 40 % de mejora de throughput respecto a la anterior implementación slice-by-8, siendo la opción de software recomendada cuando no está disponible el acelerador por instrucción.
 
 ## 6. Aceleración y topología de MCU
 
@@ -326,13 +336,13 @@ Detalle completo en [BENCHMARKING.md](BENCHMARKING.md).
 
 | Técnica | Referencia | Implementación |
 |---|---|---|
-| Snapshot A/B | Patrón *seqlock* | `ChronosRT_snapshot_*` |
-| WAL | Registro de intenciones idempotente | `ChronosRT_wal_*` con CRC y `fsync` por lotes |
+| Snapshot A/B | Patrón *seqlock* | `snapshot_*` |
+| WAL | Registro de intenciones idempotente | `wal_*` con CRC y `fsync` por lotes |
 | Golden image | Escritura atómica | `<path>.tmp` → `fsync` → `rename` |
-| Watchdog | Heartbeat + HW | `ChronosRT_watchdog_*`; detección de `/dev/watchdog` |
-| Traza de baja sobrecarga | `trace_marker` (ftrace) | `ChronosRT_trace_*` |
-| Contadores en vivo | Atómicos | `ChronosRT_counters_*` |
-| Autotest de colas | *Fuzzing* concurrente | `ChronosRT_selftest_bounded_queue/ring` |
+| Watchdog | Heartbeat + HW | `watchdog_*`; detección de `/dev/watchdog` |
+| Traza de baja sobrecarga | `trace_marker` (ftrace) | `trace_*` |
+| Contadores en vivo | Atómicos | `counters_*` |
+| Autotest de colas | *Fuzzing* concurrente | `selftest_bounded_queue/ring` |
 
 ---
 
@@ -340,7 +350,7 @@ Detalle completo en [BENCHMARKING.md](BENCHMARKING.md).
 
 1. Build limpio `Release` en el host de referencia.
 2. `ctest` con **10 suites / 547 aserciones**.
-3. `chronosrt_bench --mode frame`, `--mode crc` y `--mode aalid` para coste de
+3. `bench --mode frame`, `--mode crc` y `--mode aalid` para coste de
    CPU, HAL e identidad local.
 4. `rtla timerlat` / `cyclictest` en kernel PREEMPT_RT para latencia y jitter.
 5. Validación física de EtherCAT/EtherTux con `CAP_NET_RAW` y NIC dedicada
@@ -354,7 +364,7 @@ DC en esclavas reales.
 
 ## 10. Referencias
 
-1. **ChronosRT Master (GitHub):** <https://github.com/LauOtero/ChronosRT_MASTER>
+1. **libtuxwarp (GitHub):** <https://github.com/LauOtero/libtuxwarp>
 2. **Linux Kernel Preemption:** `Documentation/preempt.txt`
 3. **PREEMPT_RT mainline:** integración desde Linux 6.12 (`preempt=full`)
 4. **EEVDF:** planificador por defecto de `SCHED_OTHER` desde Linux 6.6

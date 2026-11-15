@@ -14,12 +14,12 @@
 /* Helpers públicos (API: parte testeable sin hardware)                */
 /* ------------------------------------------------------------------ */
 
-uint32_t ChronosRT_ec_datagram_build(uint8_t* out, uint32_t out_size,
+uint32_t ec_datagram_build(uint8_t* out, uint32_t out_size,
                                      uint8_t cmd, uint8_t idx,
                                      uint32_t address,
                                      const void* data, uint16_t len,
                                      bool more) {
-    if (!out || len > ChronosRT_EC_MAX_DATAGRAM_DATA) {
+    if (!out || len > EC_MAX_DATAGRAM_DATA) {
         return 0;
     }
 
@@ -63,8 +63,8 @@ uint32_t ChronosRT_ec_datagram_build(uint8_t* out, uint32_t out_size,
     return total;
 }
 
-uint32_t ChronosRT_ec_datagram_parse(const uint8_t* in, uint32_t in_len,
-                                     ChronosRT_ec_datagram_t* out) {
+uint32_t ec_datagram_parse(const uint8_t* in, uint32_t in_len,
+                                     ec_datagram_t* out) {
     if (!in || !out || in_len < EC_DGR_HDR_LEN + EC_WKC_LEN) {
         return 0;
     }
@@ -81,7 +81,7 @@ uint32_t ChronosRT_ec_datagram_parse(const uint8_t* in, uint32_t in_len,
     out->more = (dl & EC_MORE_BIT) != 0u;
     out->irq = (uint16_t)(in[8] | ((uint16_t)in[9] << 8));
 
-    if (out->data_len > ChronosRT_EC_MAX_DATAGRAM_DATA) {
+    if (out->data_len > EC_MAX_DATAGRAM_DATA) {
         return 0;
     }
 
@@ -97,7 +97,7 @@ uint32_t ChronosRT_ec_datagram_parse(const uint8_t* in, uint32_t in_len,
     return total;
 }
 
-uint16_t ChronosRT_ec_frame_header(uint8_t out[2], uint16_t datagram_bytes) {
+uint16_t ec_frame_header(uint8_t out[2], uint16_t datagram_bytes) {
     uint16_t hdr = (uint16_t)((datagram_bytes & EC_LEN_MASK) |
                               (EC_TYPE_VAL << EC_TYPE_SHIFT));
     if (out) {
@@ -114,11 +114,11 @@ uint16_t ChronosRT_ec_frame_header(uint8_t out[2], uint16_t datagram_bytes) {
 void ec_frame_begin(const uint8_t mac[6], uint8_t* frame) {
     memset(frame, 0xFF, 6);                 /* destino: difusión */
     memcpy(frame + 6, mac, 6);              /* origen            */
-    frame[12] = (uint8_t)((ChronosRT_EC_ETHERTYPE >> 8) & 0xFFu);
-    frame[13] = (uint8_t)(ChronosRT_EC_ETHERTYPE & 0xFFu);
+    frame[12] = (uint8_t)((EC_ETHERTYPE >> 8) & 0xFFu);
+    frame[13] = (uint8_t)(EC_ETHERTYPE & 0xFFu);
 }
 
 uint32_t ec_frame_commit(uint8_t* frame, uint32_t datagram_bytes) {
-    ChronosRT_ec_frame_header(frame + EC_ETH_HDR_LEN, (uint16_t)datagram_bytes);
+    ec_frame_header(frame + EC_ETH_HDR_LEN, (uint16_t)datagram_bytes);
     return EC_ETH_HDR_LEN + EC_ECAT_HDR_LEN + datagram_bytes;
 }

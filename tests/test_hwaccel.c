@@ -9,8 +9,8 @@
  *   - determinismo de la codificación,
  *   - detección de capacidades.
  */
-#include "chronosrt_hwaccel.h"
-#include "chronosrt.h"
+#include "hwaccel.h"
+#include "libtuxwarp.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -45,11 +45,11 @@ static void test_crc32c(void) {
     printf("\nRunning CRC-32C tests...\n");
 
     const char* vector = "123456789";
-    TEST_ASSERT(ChronosRT_crc32c(vector, 9u) == 0xE3069283u,
+    TEST_ASSERT(crc32c(vector, 9u) == 0xE3069283u,
                 "CRC-32C(\"123456789\") should be 0xE3069283");
-    TEST_ASSERT(ChronosRT_crc32c_sw(vector, 9u) == 0xE3069283u,
+    TEST_ASSERT(crc32c_sw(vector, 9u) == 0xE3069283u,
                 "software CRC-32C should match the standard vector");
-    TEST_ASSERT(ChronosRT_crc32c("", 0u) == 0u,
+    TEST_ASSERT(crc32c("", 0u) == 0u,
                 "CRC-32C of empty input should be 0");
 
     /* HW y SW deben coincidir para cualquier longitud (incluidas las colas). */
@@ -59,7 +59,7 @@ static void test_crc32c(void) {
     }
     bool all_match = true;
     for (size_t len = 0; len <= sizeof(buf); len++) {
-        if (ChronosRT_crc32c(buf, len) != ChronosRT_crc32c_sw(buf, len)) {
+        if (crc32c(buf, len) != crc32c_sw(buf, len)) {
             all_match = false;
             break;
         }
@@ -67,22 +67,22 @@ static void test_crc32c(void) {
     TEST_ASSERT(all_match, "hardware and software CRC-32C should agree for all lengths");
 
     /* Sensibilidad: un bit alterado cambia el CRC. */
-    uint32_t before = ChronosRT_crc32c(buf, sizeof(buf));
+    uint32_t before = crc32c(buf, sizeof(buf));
     buf[100] ^= 0x01u;
-    uint32_t after = ChronosRT_crc32c(buf, sizeof(buf));
+    uint32_t after = crc32c(buf, sizeof(buf));
     TEST_ASSERT(before != after, "CRC-32C should detect a single-bit change");
 }
 
 static void test_gf8(void) {
     printf("\nRunning GF(2^8) tests...\n");
 
-    TEST_ASSERT(ChronosRT_gf8_mul(0u, 123u) == 0u, "0 * x should be 0");
-    TEST_ASSERT(ChronosRT_gf8_mul(1u, 123u) == 123u, "1 * x should be x");
+    TEST_ASSERT(gf8_mul(0u, 123u) == 0u, "0 * x should be 0");
+    TEST_ASSERT(gf8_mul(1u, 123u) == 123u, "1 * x should be x");
 
     bool inverse_ok = true;
     for (unsigned a = 1; a < 256; a++) {
-        uint8_t inv = ChronosRT_gf8_inv((uint8_t)a);
-        if (ChronosRT_gf8_mul((uint8_t)a, inv) != 1u) {
+        uint8_t inv = gf8_inv((uint8_t)a);
+        if (gf8_mul((uint8_t)a, inv) != 1u) {
             inverse_ok = false;
             break;
         }
@@ -93,8 +93,8 @@ static void test_gf8(void) {
     bool algebra_ok = true;
     for (unsigned a = 1; a < 40; a++) {
         for (unsigned b = 1; b < 40; b++) {
-            uint8_t ab = ChronosRT_gf8_mul((uint8_t)a, (uint8_t)b);
-            uint8_t ba = ChronosRT_gf8_mul((uint8_t)b, (uint8_t)a);
+            uint8_t ab = gf8_mul((uint8_t)a, (uint8_t)b);
+            uint8_t ba = gf8_mul((uint8_t)b, (uint8_t)a);
             if (ab != ba) {
                 algebra_ok = false;
             }
@@ -107,13 +107,13 @@ static void test_gf8(void) {
 static void rs_roundtrip(uint8_t k, uint8_t n, const unsigned* drop, unsigned drop_count,
                          const char* label) {
     enum { LEN = 137 };
-    uint8_t data[ChronosRT_RS_MAX_N][LEN];
-    uint8_t parity[ChronosRT_RS_MAX_N][LEN];
-    uint8_t blocks[ChronosRT_RS_MAX_N][LEN];
+    uint8_t data[RS_MAX_N][LEN];
+    uint8_t parity[RS_MAX_N][LEN];
+    uint8_t blocks[RS_MAX_N][LEN];
 
-    const uint8_t* data_ptrs[ChronosRT_RS_MAX_N];
-    uint8_t* parity_ptrs[ChronosRT_RS_MAX_N];
-    uint8_t* block_ptrs[ChronosRT_RS_MAX_N];
+    const uint8_t* data_ptrs[RS_MAX_N];
+    uint8_t* parity_ptrs[RS_MAX_N];
+    uint8_t* block_ptrs[RS_MAX_N];
 
     for (unsigned i = 0; i < k; i++) {
         for (unsigned j = 0; j < LEN; j++) {
@@ -125,16 +125,16 @@ static void rs_roundtrip(uint8_t k, uint8_t n, const unsigned* drop, unsigned dr
         parity_ptrs[j] = parity[j];
     }
 
-    ChronosRT_status_t st = ChronosRT_rs_encode(k, n, data_ptrs, parity_ptrs, LEN);
-    TEST_ASSERT(st == ChronosRT_SUCCESS, label);
+    status_t st = rs_encode(k, n, data_ptrs, parity_ptrs, LEN);
+    TEST_ASSERT(st == SUCCESS, label);
 
     /* Determinismo: repetir la codificación da exactamente lo mismo. */
-    uint8_t parity2[ChronosRT_RS_MAX_N][LEN];
-    uint8_t* parity2_ptrs[ChronosRT_RS_MAX_N];
+    uint8_t parity2[RS_MAX_N][LEN];
+    uint8_t* parity2_ptrs[RS_MAX_N];
     for (unsigned j = 0; j < (unsigned)(n - k); j++) {
         parity2_ptrs[j] = parity2[j];
     }
-    (void)ChronosRT_rs_encode(k, n, data_ptrs, parity2_ptrs, LEN);
+    (void)rs_encode(k, n, data_ptrs, parity2_ptrs, LEN);
     bool deterministic = true;
     for (unsigned j = 0; j < (unsigned)(n - k); j++) {
         if (memcmp(parity[j], parity2[j], LEN) != 0) {
@@ -144,7 +144,7 @@ static void rs_roundtrip(uint8_t k, uint8_t n, const unsigned* drop, unsigned dr
     TEST_ASSERT(deterministic, "RS encoding should be deterministic");
 
     /* Copia el código completo y borra los bloques indicados. */
-    bool present[ChronosRT_RS_MAX_N];
+    bool present[RS_MAX_N];
     for (unsigned c = 0; c < n; c++) {
         if (c < k) {
             memcpy(blocks[c], data[c], LEN);
@@ -160,8 +160,8 @@ static void rs_roundtrip(uint8_t k, uint8_t n, const unsigned* drop, unsigned dr
         memset(blocks[idx], 0xAA, LEN);   /* basura: debe sobrescribirse */
     }
 
-    st = ChronosRT_rs_decode(k, n, block_ptrs, present, LEN);
-    TEST_ASSERT(st == ChronosRT_SUCCESS, "RS erasure decoding should succeed");
+    st = rs_decode(k, n, block_ptrs, present, LEN);
+    TEST_ASSERT(st == SUCCESS, "RS erasure decoding should succeed");
 
     bool recovered = true;
     for (unsigned c = 0; c < n; c++) {
@@ -196,13 +196,13 @@ static void test_rs(void) {
     /* Parámetros inválidos. */
     const uint8_t* dp[8] = { 0 };
     uint8_t* pp[8] = { 0 };
-    TEST_ASSERT(ChronosRT_rs_encode(0u, 10u, dp, pp, 8u) == ChronosRT_ERROR_INVALID,
+    TEST_ASSERT(rs_encode(0u, 10u, dp, pp, 8u) == ERROR_INVALID,
                 "k=0 should be rejected");
-    TEST_ASSERT(ChronosRT_rs_encode(8u, 8u, dp, pp, 8u) == ChronosRT_ERROR_INVALID,
+    TEST_ASSERT(rs_encode(8u, 8u, dp, pp, 8u) == ERROR_INVALID,
                 "n <= k should be rejected");
-    TEST_ASSERT(ChronosRT_rs_encode(8u, (uint8_t)(ChronosRT_RS_MAX_N + 1u), dp, pp, 8u)
-                    == ChronosRT_ERROR_INVALID,
-                "n > ChronosRT_RS_MAX_N should be rejected");
+    TEST_ASSERT(rs_encode(8u, (uint8_t)(RS_MAX_N + 1u), dp, pp, 8u)
+                    == ERROR_INVALID,
+                "n > RS_MAX_N should be rejected");
 
     /* Demasiados borrados: irrecuperable. */
     enum { LEN = 16 };
@@ -216,14 +216,14 @@ static void test_rs(void) {
     for (unsigned c = 0; c < 9u; c++) {   /* 9 > n-k = 8 */
         present[c] = false;
     }
-    TEST_ASSERT(ChronosRT_rs_decode(8u, 16u, bp, present, LEN) == ChronosRT_ERROR_CORRUPT,
+    TEST_ASSERT(rs_decode(8u, 16u, bp, present, LEN) == ERROR_CORRUPT,
                 "decoding with more erasures than parity should fail cleanly");
 }
 
 static void test_caps(void) {
     printf("\nRunning hardware capability tests...\n");
 
-    const ChronosRT_hw_caps_t* caps = ChronosRT_hw_caps();
+    const hw_caps_t* caps = hw_caps();
     TEST_ASSERT(caps != NULL, "capability descriptor should never be NULL");
     TEST_ASSERT(caps->crc32c_backend != NULL, "CRC backend name should be set");
     TEST_ASSERT(caps->fec_backend != NULL, "FEC backend name should be set");
@@ -242,17 +242,17 @@ static void test_caps(void) {
            (int)caps->isa_adx);
     printf("  CRC      : %s  FEC: %s\n", caps->crc32c_backend, caps->fec_backend);
 
-    ChronosRT_hw_caps_t per_if;
-    ChronosRT_status_t st = ChronosRT_hw_caps_for_interface("lo", &per_if);
-    TEST_ASSERT(st == ChronosRT_SUCCESS || st == ChronosRT_ERROR_NOTSUP ||
-                st == ChronosRT_ERROR_IO,
+    hw_caps_t per_if;
+    status_t st = hw_caps_for_interface("lo", &per_if);
+    TEST_ASSERT(st == SUCCESS || st == ERROR_NOTSUP ||
+                st == ERROR_IO,
                 "interface capability probe should fail gracefully");
-    TEST_ASSERT(ChronosRT_hw_caps_for_interface(NULL, &per_if) == ChronosRT_ERROR_INVALID,
+    TEST_ASSERT(hw_caps_for_interface(NULL, &per_if) == ERROR_INVALID,
                 "probe(NULL) should be rejected");
-    TEST_ASSERT(ChronosRT_hw_caps_for_interface("lo", NULL) == ChronosRT_ERROR_INVALID,
+    TEST_ASSERT(hw_caps_for_interface("lo", NULL) == ERROR_INVALID,
                 "probe(..., NULL) should be rejected");
 
-    TEST_ASSERT(ChronosRT_tx_timestamp_ns() != 0u, "TX timestamp should be non-zero");
+    TEST_ASSERT(tx_timestamp_ns() != 0u, "TX timestamp should be non-zero");
 }
 
 /*
@@ -263,14 +263,14 @@ static void test_caps(void) {
 static void test_crc_backends(void) {
     printf("\nRunning CRC-32C backend tests...\n");
 
-    static const char* names[] = { "vpclmul-fold", "pclmul-fold", "sse4.2-x4",
-                                   "armv8-crc", "slice-by-8" };
-    const char* active = ChronosRT_crc32c_active_backend();
+    static const char* names[] = { "sse4.2-x4", "avx2-sw16", "sw16",
+                                   "armv8-crc", "neon-sw16", "slice-by-8" };
+    const char* active = crc32c_active_backend();
     printf("  backend activo: %s\n", active);
     TEST_ASSERT(active != NULL, "the active backend should be reported");
 
     const char* failing = NULL;
-    uint32_t failures = ChronosRT_crc32c_selftest(&failing);
+    uint32_t failures = crc32c_selftest(&failing);
     if (failures != 0u) {
         printf("  primer backend que falla: %s\n", failing ? failing : "?");
     }
@@ -283,7 +283,7 @@ static void test_crc_backends(void) {
 
     uint32_t tested = 0u;
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
-        if (ChronosRT_crc32c_force_backend(names[i]) != ChronosRT_SUCCESS) {
+        if (crc32c_force_backend(names[i]) != SUCCESS) {
             continue;   /* no disponible en esta CPU */
         }
         tested++;
@@ -291,8 +291,8 @@ static void test_crc_backends(void) {
         for (size_t len = 0; len <= sizeof(buf) && ok; len++) {
             const uint32_t seeds[3] = { 0u, 0xFFFFFFFFu, 0xA5A5A5A5u };
             for (unsigned s = 0; s < 3u; s++) {
-                if (ChronosRT_crc32c_raw(seeds[s], buf, len)
-                        != ChronosRT_crc32c_sw_raw(seeds[s], buf, len)) {
+                if (crc32c_raw(seeds[s], buf, len)
+                        != crc32c_sw_raw(seeds[s], buf, len)) {
                     ok = false;
                     printf("  %s falla con len=%zu seed=%08x\n", names[i], len, seeds[s]);
                     break;
@@ -305,14 +305,14 @@ static void test_crc_backends(void) {
     }
     TEST_ASSERT(tested >= 1u, "at least one CRC backend should be available");
 
-    TEST_ASSERT(ChronosRT_crc32c_force_backend(active) == ChronosRT_SUCCESS,
+    TEST_ASSERT(crc32c_force_backend(active) == SUCCESS,
                 "the original backend should be restored");
-    TEST_ASSERT(ChronosRT_crc32c_force_backend("no-existe") == ChronosRT_ERROR_NOTSUP,
+    TEST_ASSERT(crc32c_force_backend("no-existe") == ERROR_NOTSUP,
                 "an unknown backend should be rejected");
 }
 
 int main(void) {
-    printf("ChronosRT Hardware Acceleration Test Suite v%s\n", ChronosRT_VERSION);
+    printf("libtuxwarp Hardware Acceleration Test Suite v%s\n", VERSION);
     printf("================================================\n");
 
     test_crc32c();

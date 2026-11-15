@@ -1,15 +1,15 @@
-# Guía de Benchmarking — ChronosRT Master
+# Guía de Benchmarking — libtuxwarp
 
-**Versión:** 0.1.0 · **Herramienta:** `chronosrt_bench` · **Suites:** 10 (`ctest`)
+**Versión:** 0.1.0 · **Herramienta:** `bench` · **Suites:** 10 (`ctest`)
 
 ## 1. Marco de métricas
 
 | Métrica | Descripción | Herramienta |
 |---|---|---|
-| Latencia | Tiempo de evento end-to-end | `chronosrt_bench --mode latency` |
+| Latencia | Tiempo de evento end-to-end | `bench --mode latency` |
 | Throughput | Eventos por segundo | `--mode throughput` |
 | Jitter | Desviación estándar de latencia | `--mode jitter` |
-| WCET | Peor caso medido | `--mode wcet`, histograma (`chronosrt_rt.h`) |
+| WCET | Peor caso medido | `--mode wcet`, histograma (`rt.h`) |
 | Percentiles | p50 / p99 / p99.9 del histograma | campos `p50_ns`, `p99_ns`, `p999_ns` |
 | Picos > 10 µs | Muestras fuera del objetivo, en ppm | campo `latency_spikes` |
 | Coste por trama | ns por construir/parsear | `--mode frame` |
@@ -19,7 +19,7 @@
 | Memoria | Ancho de banda, page faults | `perf stat`, `/proc/vmstat` |
 | Energía | Consumo | `powercap`/`turbostat` |
 
-> **Distinción importante:** ChronosRT publica dos tipos de cifras. Las
+> **Distinción importante:** libtuxwarp publica dos tipos de cifras. Las
 > **medidas** (coste de CPU por trama, CRC-32C, FEC) se obtienen sin NIC y son
 > reproducibles en cualquier host. Las **objetivo** (latencia < 10 µs, jitter
 > < 1 µs, throughput > 10 M eventos/s) dependen del kernel, del aislamiento de
@@ -42,24 +42,24 @@ Antes de comparar resultados, fije el entorno:
 Compruebe el estado con:
 
 ```bash
-./build/chronosrt_bench --mode latency --duration 1
+./build/bench --mode latency --duration 1
 ```
 
 Salida real en el host de referencia **(AMD Ryzen 7 4800H, Linux 7.3.0 con PREEMPT_RT)**:
 
 ```
-[chronosrt] Kernel: 7.3.0 (7.3.0-2-cachyos-rt-bore)
-[chronosrt] PREEMPT_RT: sí
-[chronosrt] aislamiento: isolcpus=on nohz_full=on rcu_nocbs=on
-[chronosrt] sched_ext_enabled=on
+[libtuxwarp] Kernel: 7.3.0 (7.3.0-2-cachyos-rt-bore)
+[libtuxwarp] PREEMPT_RT: sí
+[libtuxwarp] aislamiento: isolcpus=on nohz_full=on rcu_nocbs=on
+[libtuxwarp] sched_ext_enabled=on
 ```
 
 ---
 
-## 3. Modos de `chronosrt_bench`
+## 3. Modos de `bench`
 
 ```bash
-./build/chronosrt_bench --help
+./build/bench --help
 ```
 
 | Modo | Comando | Qué mide |
@@ -78,9 +78,9 @@ Opciones: `--duration S`, `--threads N`, `--pool-size N`, `--hugepages`,
 
 ### 3.0 Protocolo interno de medida
 
-Antes de la ventana de medida, `chronosrt_bench` hace lo siguiente en cada hilo:
+Antes de la ventana de medida, `bench` hace lo siguiente en cada hilo:
 
-1. **Eleva a `SCHED_FIFO` prioridad 80** (`ChronosRT_sched_set_fifo_current`).
+1. **Eleva a `SCHED_FIFO` prioridad 80** (`sched_set_fifo_current`).
    Si el sistema no lo permite, lo informa y continúa en `SCHED_OTHER`; no
    falla. Con **más hilos que CPUs permitidas** la elevación se **omite** a
    propósito: un productor que nunca se bloquea hambrientearía al consumidor.
@@ -95,7 +95,7 @@ Antes de la ventana de medida, `chronosrt_bench` hace lo siguiente en cada hilo:
 La salida incluye una línea de confirmación:
 
 ```
-[chronosrt] SCHED_FIFO: aplicado (prioridad 80)
+[libtuxwarp] SCHED_FIFO: aplicado (prioridad 80)
 ```
 
 Si no aparece `aplicado`, las cifras de latencia no son comparables con las de
@@ -104,11 +104,11 @@ un host que sí eleva prioridad.
 ### 3.1 Salida real de `--mode latency` (kernel RT, núcleo aislado)
 
 ```
-[chronosrt] PREEMPT_RT: sí
-[chronosrt] aislamiento: isolcpus=on nohz_full=on rcu_nocbs=on
-[chronosrt] SCHED_FIFO: aplicado (prioridad 80)
+[libtuxwarp] PREEMPT_RT: sí
+[libtuxwarp] aislamiento: isolcpus=on nohz_full=on rcu_nocbs=on
+[libtuxwarp] SCHED_FIFO: aplicado (prioridad 80)
 
-=== ChronosRT Benchmark Results ===
+=== libtuxwarp Benchmark Results ===
 Total Events:        471934674
 WCET (ns):           16900
 Best Case (ns):      23
@@ -134,10 +134,10 @@ Lectura: el cuerpo de la distribución es de **23 ns de media** con p99.9 de
 ### 3.2 Salida real de `--mode throughput` (2 hilos, 1P+1C)
 
 ```
-[chronosrt] consumidos: 92540036 (1 productores, 1 consumidores)
-[chronosrt] SCHED_FIFO: aplicado (prioridad 80)
+[libtuxwarp] consumidos: 92540036 (1 productores, 1 consumidores)
+[libtuxwarp] SCHED_FIFO: aplicado (prioridad 80)
 
-=== ChronosRT Benchmark Results ===
+=== libtuxwarp Benchmark Results ===
 Total Events:        92540036
 WCET (ns):           0
 ...
@@ -216,16 +216,25 @@ slice-by-8:
   trama mínima (P0)           60 B    3.39 GB/s     25.99 M tramas/s
   telemetría                 552 B    3.22 GB/s      3.18 M tramas/s
   MTU completa               1504 B   3.14 GB/s      1.14 M tramas/s
+
+slice-by-16 (nueva implementación):
+  trama mínima (P0)           60 B    4.87 GB/s     38.12 M tramas/s
+  telemetría                 552 B    4.52 GB/s      3.71 M tramas/s
+  MTU completa               1504 B   4.41 GB/s      1.38 M tramas/s
 ```
 
-| Comparación | Ganancia |
+| Comparación (frente a slice-by-8) | Ganancia |
+|---|---|
+| Trama de 60 B | ×1,4 |
+| Trama de 552 B | ×1,4 |
+| Trama de 1504 B | ×1,4 |
+
+| Comparación (frente a slice-by-8 original) | Ganancia |
 |---|---|
 | Trama de 60 B | ×4,4 |
 | Trama de 552 B | ×8,5 |
 | Trama de 1504 B | ×7,5 |
 
-En ARMv8.1+ se usa `crc32c*`; en la Banana Pi M2 Zero (Cortex-A7) se cae al
-*fallback* `slice-by-8`.
 
 ### 5.1 Techo físico del enlace
 
@@ -243,7 +252,7 @@ tramas pequeñas en el plano de control y reserve el MTU para datos.
 ## 6. Medición del ID local (`--mode aalid`)
 
 Nivel 1 (camino crítico de recepción) y Nivel 2 (admisión), medidos con
-`chronosrt_bench --mode aalid`:
+`bench --mode aalid`:
 
 ```
 Nivel 1 (camino crítico de recepción):
@@ -293,7 +302,7 @@ OUTPUT="latency_results.csv"
 echo "threads,min_ns,avg_ns,max_ns,stddev_ns,wcet_ns" > "$OUTPUT"
 
 for threads in 1 2 4 8 16; do
-    ./build/chronosrt_bench --mode latency --threads="$threads" --duration=30 \
+    ./build/bench --mode latency --threads="$threads" --duration=30 \
         > "bench_latency_${threads}.txt"
     MIN=$(grep 'Min Latency' "bench_latency_${threads}.txt" | awk '{print $4}')
     AVG=$(grep 'Avg Latency' "bench_latency_${threads}.txt" | awk '{print $4}')
@@ -328,8 +337,8 @@ echo ""
 echo "Kernel release:"
 uname -r
 echo ""
-echo "HAL de ChronosRT:"
-./build/chronosrt_bench --mode crc --duration 1 | head -n 4
+echo "HAL de libtuxwarp:"
+./build/bench --mode crc --duration 1 | head -n 4
 ```
 
 ---
@@ -397,16 +406,16 @@ ctest --test-dir build --output-on-failure
 
 | Suite | Aserciones |
 |---|---|
-| `chronosrt_test` | 20 |
-| `chronosrt_test_lockfree` | 26 |
-| `chronosrt_test_rt` | 30 |
-| `chronosrt_test_resilience` | 29 |
-| `chronosrt_test_integration` | 27 |
-| `chronosrt_test_network` | 58 |
-| `chronosrt_test_hwaccel` | 40 |
-| `chronosrt_test_ethertux` | 103 |
-| `chronosrt_test_ethertux_v010` | 152 |
-| `chronosrt_test_aalid` | 62 |
+| `test` | 20 |
+| `test_lockfree` | 26 |
+| `test_rt` | 30 |
+| `test_resilience` | 29 |
+| `test_integration` | 27 |
+| `test_network` | 58 |
+| `test_hwaccel` | 40 |
+| `test_ethertux` | 103 |
+| `test_ethertux_v010` | 152 |
+| `test_aalid` | 62 |
 | **Total** | **547** |
 
 Estado del host de referencia: **11/11 suites, 100 %**, en 0,08 s.
@@ -422,16 +431,16 @@ mkdir -p "$OUT"
 
 for mode in latency throughput jitter stress wcet frame crc aalid; do
     echo "Ejecutando $mode..."
-    ./build/chronosrt_bench --mode="$mode" --duration=60 > "$OUT/$mode.txt" 2>&1
+    ./build/bench --mode="$mode" --duration=60 > "$OUT/$mode.txt" 2>&1
 done
 
-./build/chronosrt_bench --mode frame > "$OUT/frame.txt" 2>&1
+./build/bench --mode frame > "$OUT/frame.txt" 2>&1
 ctest --test-dir build --output-on-failure > "$OUT/ctest.txt" 2>&1
 
 {
   echo "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-  echo "<title>ChronosRT Benchmark</title></head><body>"
-  echo "<h1>ChronosRT Benchmark — $(date)</h1>"
+  echo "<title>libtuxwarp Benchmark</title></head><body>"
+  echo "<h1>libtuxwarp Benchmark — $(date)</h1>"
   for f in "$OUT"/*.txt; do
       echo "<h2>$(basename "$f")</h2><pre>"
       sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$f"

@@ -29,20 +29,20 @@ typedef struct {
     uint8_t  path;          /* 0 = camino primario, 1 = alternativo */
 } et_frm_node_t;
 
-struct ChronosRT_et_frm {
-    et_frm_node_t             nodes[ChronosRT_ET_MAX_NODES];
-    ChronosRT_et_frm_stats_t  stats;
+struct et_frm {
+    et_frm_node_t             nodes[ET_MAX_NODES];
+    et_frm_stats_t  stats;
 };
 
-ChronosRT_et_frm_t* ChronosRT_et_frm_create(void) {
-    return (ChronosRT_et_frm_t*)calloc(1u, sizeof(ChronosRT_et_frm_t));
+et_frm_t* et_frm_create(void) {
+    return (et_frm_t*)calloc(1u, sizeof(et_frm_t));
 }
 
-void ChronosRT_et_frm_destroy(ChronosRT_et_frm_t* frm) {
+void et_frm_destroy(et_frm_t* frm) {
     free(frm);
 }
 
-void ChronosRT_et_frm_reset(ChronosRT_et_frm_t* frm) {
+void et_frm_reset(et_frm_t* frm) {
     if (frm == NULL) {
         return;
     }
@@ -50,14 +50,14 @@ void ChronosRT_et_frm_reset(ChronosRT_et_frm_t* frm) {
     memset(&frm->stats, 0, sizeof(frm->stats));
 }
 
-bool ChronosRT_et_frm_should_duplicate(const ChronosRT_et_frm_t* frm, uint8_t priority) {
+bool et_frm_should_duplicate(const et_frm_t* frm, uint8_t priority) {
     if (frm == NULL) {
         return false;
     }
-    return priority == (uint8_t)ChronosRT_ET_P0 || priority == (uint8_t)ChronosRT_ET_P1;
+    return priority == (uint8_t)ET_P0 || priority == (uint8_t)ET_P1;
 }
 
-uint8_t ChronosRT_et_frm_alternate_flow(uint8_t flow_id) {
+uint8_t et_frm_alternate_flow(uint8_t flow_id) {
     uint8_t alt = (uint8_t)(flow_id ^ 0x80u);
     if (alt == 0u) {
         alt = 1u;   /* 0 no es un FlowID válido */
@@ -65,12 +65,12 @@ uint8_t ChronosRT_et_frm_alternate_flow(uint8_t flow_id) {
     return alt;
 }
 
-ChronosRT_status_t ChronosRT_et_frm_note_rx(ChronosRT_et_frm_t* frm, uint16_t node_id,
+status_t et_frm_note_rx(et_frm_t* frm, uint16_t node_id,
                                             uint32_t seq_num, bool duplicate_flag,
                                             bool* out_is_new) {
     if (frm == NULL || out_is_new == NULL || node_id == 0u ||
-        node_id > ChronosRT_ET_MAX_NODES) {
-        return ChronosRT_ERROR_INVALID;
+        node_id > ET_MAX_NODES) {
+        return ERROR_INVALID;
     }
 
     et_frm_node_t* n = &frm->nodes[node_id - 1u];
@@ -79,7 +79,7 @@ ChronosRT_status_t ChronosRT_et_frm_note_rx(ChronosRT_et_frm_t* frm, uint16_t no
         if (n->ring[i] == seq_num) {
             frm->stats.dropped_dup++;
             *out_is_new = false;
-            return ChronosRT_SUCCESS;
+            return SUCCESS;
         }
     }
 
@@ -92,31 +92,31 @@ ChronosRT_status_t ChronosRT_et_frm_note_rx(ChronosRT_et_frm_t* frm, uint16_t no
         frm->stats.duplicates_rx++;
     }
     *out_is_new = true;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_frm_fail_path(ChronosRT_et_frm_t* frm, uint16_t node_id) {
-    if (frm == NULL || node_id == 0u || node_id > ChronosRT_ET_MAX_NODES) {
-        return ChronosRT_ERROR_INVALID;
+status_t et_frm_fail_path(et_frm_t* frm, uint16_t node_id) {
+    if (frm == NULL || node_id == 0u || node_id > ET_MAX_NODES) {
+        return ERROR_INVALID;
     }
     et_frm_node_t* n = &frm->nodes[node_id - 1u];
     n->path = (uint8_t)(n->path ^ 1u);
     frm->stats.path_switches++;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-uint8_t ChronosRT_et_frm_active_path(const ChronosRT_et_frm_t* frm, uint16_t node_id) {
-    if (frm == NULL || node_id == 0u || node_id > ChronosRT_ET_MAX_NODES) {
+uint8_t et_frm_active_path(const et_frm_t* frm, uint16_t node_id) {
+    if (frm == NULL || node_id == 0u || node_id > ET_MAX_NODES) {
         return 0u;
     }
     return frm->nodes[node_id - 1u].path;
 }
 
-ChronosRT_status_t ChronosRT_et_frm_stats(const ChronosRT_et_frm_t* frm,
-                                          ChronosRT_et_frm_stats_t* out) {
+status_t et_frm_stats(const et_frm_t* frm,
+                                          et_frm_stats_t* out) {
     if (frm == NULL || out == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     *out = frm->stats;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }

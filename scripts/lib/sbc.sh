@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/lib/sbc.sh — Perfiles de SBC objetivo de ChronosRT
+# scripts/lib/sbc.sh — Perfiles de SBC objetivo de libtuxwarp
 #
 # Fuente ÚNICA de verdad para build.sh y test_runner.sh.
 # Referencia: docs/Protocolo EtherTux.md
@@ -170,7 +170,7 @@ sbc_load() {
             SBC_NAME="MKS Skipr"; SBC_SOC="Rockchip RK3328 + STM32F407"; SBC_CPU="Cortex-A53"
             SBC_ARCH=aarch64; SBC_CORES=4; SBC_CRC32=yes; SBC_CRYPTO="rk_crypto V1"
             SBC_PHC=no; SBC_BENCH=""
-            SBC_NOTES="el STM32F407 es un MCU auxiliar, no ejecuta ChronosRT";;
+            SBC_NOTES="el STM32F407 es un MCU auxiliar, no ejecuta libtuxwarp";;
         rock-pi-4)
             SBC_NAME="Rock Pi 4"; SBC_SOC="Rockchip RK3399"; SBC_CPU="Cortex-A72"
             SBC_ARCH=aarch64; SBC_CORES=6; SBC_CRC32=yes; SBC_CRYPTO="rk_crypto V1"
@@ -255,7 +255,7 @@ sbc_expects_crc32() {
     [ "${SBC_CRC32:-no}" = "yes" ]
 }
 
-# Token válido para `chronosrt_bench --platform` (vacío => dejar autodetección).
+# Token válido para `bench --platform` (vacío => dejar autodetección).
 sbc_bench_platform() {
     printf '%s' "${SBC_BENCH:-}"
 }

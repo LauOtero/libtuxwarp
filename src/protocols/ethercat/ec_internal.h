@@ -1,10 +1,10 @@
 /*
- * ec_internal.h — Definiciones internas del maestro EtherCAT de ChronosRT.
+ * ec_internal.h — Definiciones internas del maestro EtherCAT de libtuxwarp.
  *
  * NO es una cabecera pública: solo la usan los módulos de `src/network/`.
  * Contiene los límites, registros ESC/EEPROM/DC/SII, comandos y las estructuras
  * internas del puerto de red y del maestro (la estructura pública
- * `ChronosRT_ec_slave_t` forma parte de `ec_slave_t`).
+ * `ec_slave_t` forma parte de `ec_slave_t`).
  *
  * Organización de módulos:
  *   ec_frame.c    — serialización/parseo puro de datagramas y tramas.
@@ -14,11 +14,11 @@
  *   ec_mailbox.c  — buzón (SM0/SM1) y CoE (SDO).
  *   ec_master.c   — ciclo de vida, intercambio de datagramas y ciclo de proceso.
  */
-#ifndef CHRONOSRT_EC_INTERNAL_H
-#define CHRONOSRT_EC_INTERNAL_H
+#ifndef EC_INTERNAL_H
+#define EC_INTERNAL_H
 
-#include "chronosrt_ethercat.h"
-#include "chronosrt_abi.h"
+#include "ethercat.h"
+#include "abi.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -187,10 +187,10 @@ typedef struct {
     uint16_t itype;                              /* tipo de interfaz    */
     uint16_t dtype;
 
-    uint16_t sm_start[ChronosRT_EC_MAX_SM];
-    uint16_t sm_len[ChronosRT_EC_MAX_SM];
-    uint32_t sm_flags[ChronosRT_EC_MAX_SM];
-    uint8_t  sm_type[ChronosRT_EC_MAX_SM];
+    uint16_t sm_start[EC_MAX_SM];
+    uint16_t sm_len[EC_MAX_SM];
+    uint32_t sm_flags[EC_MAX_SM];
+    uint8_t  sm_type[EC_MAX_SM];
 
     uint16_t mbx_wr;                             /* SM0: inicio        */
     uint16_t mbx_wl;                             /* SM0: longitud      */
@@ -205,18 +205,18 @@ typedef struct {
 } ec_slave_cfg_t;
 
 typedef struct {
-    ChronosRT_ec_slave_t pub;
+    ec_slave_t pub;
     ec_slave_cfg_t       cfg;
-} ec_slave_t;
+} ec_slave_internal_t;
 
 /* ------------------------------------------------------------------ */
 /* Maestro                                                             */
 /* ------------------------------------------------------------------ */
-struct ChronosRT_ec_master {
+struct ec_master {
     ec_port_t port;
     bool      is_open;
 
-    ec_slave_t slaves[ChronosRT_EC_MAX_SLAVES + 1];   /* 1-based */
+    ec_slave_internal_t slaves[EC_MAX_SLAVES + 1];   /* 1-based */
     int        slave_count;
 
     uint8_t*   iomap;          /* mapa de proceso (asignado en config_map) */
@@ -241,12 +241,12 @@ struct ChronosRT_ec_master {
     uint64_t   process_errors;
 
     /* Buffers de trabajo pre-asignados (camino caliente sin malloc). */
-    uint8_t    tx_frame[ChronosRT_EC_MAX_FRAME];
-    uint8_t    rx_frame[ChronosRT_EC_MAX_FRAME];
+    uint8_t    tx_frame[EC_MAX_FRAME];
+    uint8_t    rx_frame[EC_MAX_FRAME];
     uint32_t   tx_frame_len;
 
-    uint8_t    mbx_out[ChronosRT_EC_MAX_MAILBOX];
-    uint8_t    mbx_in[ChronosRT_EC_MAX_MAILBOX];
+    uint8_t    mbx_out[EC_MAX_MAILBOX];
+    uint8_t    mbx_in[EC_MAX_MAILBOX];
 };
 
 /* ------------------------------------------------------------------ */
@@ -261,8 +261,8 @@ uint32_t ec_frame_commit(uint8_t* frame, uint32_t datagram_bytes);
 /* ------------------------------------------------------------------ */
 /* ec_socket.c — capa de socket RT                                     */
 /* ------------------------------------------------------------------ */
-ChronosRT_status_t ec_socket_open(ec_port_t* port, const char* ifname);
-ChronosRT_status_t ec_socket_open_redundant(ec_port_t* port, const char* ifname,
+status_t ec_socket_open(ec_port_t* port, const char* ifname);
+status_t ec_socket_open_redundant(ec_port_t* port, const char* ifname,
                                             const char* redundant_ifname);
 void     ec_socket_close(ec_port_t* port);
 /** Envía una trama Ethernet completa. Devuelve la longitud o -1. */
@@ -281,7 +281,7 @@ int64_t  ec_now_ns(void);
  * `address` = ADP | (ADO << 16) o dirección lógica. `wc` recibe el contador de
  * trabajo. Devuelve 0 si la esclava respondió (wc > 0) o -1 en error/timeout.
  */
-int ec_call(ChronosRT_ec_master_t* master, uint8_t cmd, uint32_t address,
+int ec_call(ec_master_t* master, uint8_t cmd, uint32_t address,
             const void* wdata, uint16_t len, void* rdata, uint16_t* wc);
 
 /* ------------------------------------------------------------------ */
@@ -289,24 +289,24 @@ int ec_call(ChronosRT_ec_master_t* master, uint8_t cmd, uint32_t address,
 /* ------------------------------------------------------------------ */
 
 /** Lee el estado AL de la esclava `index` (1..N) y refresca su vista pública. */
-int ec_slave_read_al(ChronosRT_ec_master_t* master, int index,
+int ec_slave_read_al(ec_master_t* master, int index,
                      uint8_t* state, uint16_t* status_code);
 /** Lee `count` palabras del SII/EEPROM de la esclava `index`. */
-int ec_slave_read_sii(ChronosRT_ec_master_t* master, int index,
+int ec_slave_read_sii(ec_master_t* master, int index,
                       uint16_t word, uint8_t* out, int words);
 /** Configura un Sync Manager de la esclava `index`. */
-int ec_slave_write_sm(ChronosRT_ec_master_t* master, int index, int sm,
+int ec_slave_write_sm(ec_master_t* master, int index, int sm,
                       uint16_t start, uint16_t len, uint32_t flags);
 /** Configura un FMMU de la esclava `index`. */
-int ec_slave_write_fmmu(ChronosRT_ec_master_t* master, int index, int fmmu,
+int ec_slave_write_fmmu(ec_master_t* master, int index, int fmmu,
                         uint32_t log_start, uint16_t len, uint16_t phys_start, uint8_t type);
 
 /* ------------------------------------------------------------------ */
 /* ec_mailbox.c — buzón (SM0/SM1) y CoE (SDO)                          */
 /* ------------------------------------------------------------------ */
-int ec_mbx_send(ChronosRT_ec_master_t* master, int slave,
+int ec_mbx_send(ec_master_t* master, int slave,
                 const uint8_t* mbx, uint16_t len);
-int ec_mbx_receive(ChronosRT_ec_master_t* master, int slave,
+int ec_mbx_receive(ec_master_t* master, int slave,
                    uint8_t* mbx, uint16_t bufsize, uint32_t timeout_us);
 
-#endif /* CHRONOSRT_EC_INTERNAL_H */
+#endif /* EC_INTERNAL_H */

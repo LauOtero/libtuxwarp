@@ -12,12 +12,11 @@
  * - FRM for flow redundancy
  * - Local ID admission (Level 2 deterministic MAC derivation)
  *
- * Bridges ChronosRT's internal EtherTux master (ChronosRT_et_master_t) with
+ * Bridges libtuxwarp's internal EtherTux master (et_master_t) with
  * the TuxRT transport abstraction layer (tuxrt_transport_adapter_t).
  */
 
-#define _POSIX_C_SOURCE 200809L
-#define _GNU_SOURCE
+/* No comment - General transport */
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -36,8 +35,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "chronosrt_ethertux.h"
-#include "chronosrt_transport.h"
+#include "ethertux.h"
+#include "transport.h"
 
 /* EtherTux EtherType */
 #define TUXRT_ET_ETHERTYPE 0x88B5
@@ -45,10 +44,12 @@
 /* Maximum frames in batch (optimization for sendmmsg) */
 #define ET_BATCH_MAX 16u
 
-/* Transport implementation state */
+
 typedef struct {
-    ChronosRT_et_master_t* master;
+    et_master_t* master;
+    et_slave_t*  slave;           /* Used when operation_mode is SLAVE */
     char ifname[IF_NAMESIZE];
+    tuxrt_nic_mode_t mode;
     pthread_mutex_t mutex;
     bool configured;
 } ethertux_transport_impl_t;
@@ -63,8 +64,8 @@ static bool ethertux_init_features(ethertux_transport_impl_t* impl,
 
     /* Configure QoS from bitrate if available */
     if (cfg->bitrate > 0) {
-        ChronosRT_et_qos_config_t qos_cfg;
-        ChronosRT_et_qos_default_config(&qos_cfg);
+        et_qos_config_t qos_cfg;
+        et_qos_default_config(&qos_cfg);
         qos_cfg.bucket[TUXRT_ET_P0].rate_bytes_per_sec = cfg->bitrate / 10;      /* 10% for P0 */
         qos_cfg.bucket[TUXRT_ET_P1].rate_bytes_per_sec = cfg->bitrate / 10;      /* 10% for P1 */
         qos_cfg.bucket[TUXRT_ET_P2].rate_bytes_per_sec = cfg->bitrate / 2;       /* 50% for P2 */
@@ -77,13 +78,13 @@ static bool ethertux_init_features(ethertux_transport_impl_t* impl,
         qos_cfg.lapm_high_percent = 80;
         qos_cfg.lapm_low_percent = 60;
 
-        (void)ChronosRT_et_master_set_qos(impl->master, &qos_cfg);
+        (void)et_master_set_qos(impl->master, &qos_cfg);
     }
 
     /* Configure FEC (Reed-Solomon) if needed */
     if (cfg->flow_control) {
         /* Enable robust FEC for lossy networks */
-        (void)ChronosRT_et_master_set_fec(impl->master, ChronosRT_ET_FEC_LIGHT);
+        (void)et_master_set_fec(impl->master, ET_FEC_LIGHT);
     }
 
     return true;
@@ -109,44 +110,71 @@ static tuxrt_err_t ethertux_open(tuxrt_transport_adapter_t* adapter) {
         strncpy(impl->ifname, "eth0", IF_NAMESIZE - 1);
     }
 
-    /* Create EtherTux master */
-    impl->master = ChronosRT_et_master_create();
-    if (!impl->master) {
-        pthread_mutex_destroy(&impl->mutex);
-        free(impl);
-        return TUXRT_ERR_NOMEM;
+    /* Determine mode from config (default is MASTER) */
+    tuxrt_nic_mode_t mode = adapter->config.operation_mode;
+    if (mode == TUXRT_NIC_MODE_SLAVE) {
+        impl->mode = TUXRT_NIC_MODE_SLAVE;
+    } else {
+        impl->mode = TUXRT_NIC_MODE_MASTER;
     }
 
-    /* Open interface with auto-detected link speed */
-    ChronosRT_status_t st = ChronosRT_et_master_open_auto(impl->master, impl->ifname);
-    if (st != ChronosRT_SUCCESS) {
-        ChronosRT_et_master_destroy(impl->master);
-        pthread_mutex_destroy(&impl->mutex);
-        free(impl);
-        return TUXRT_ERR_IO;
+    /* Create EtherTux master or slave based on mode */
+    if (impl->mode == TUXRT_NIC_MODE_SLAVE) {
+        /* Create slave context */
+        impl->slave = et_slave_create(impl->ifname,
+                                      adapter->config.bitrate > 0 ? adapter->config.bitrate : 1000000000u,
+                                      1000000u); /* 1 ms default cycle */
+        if (!impl->slave) {
+            pthread_mutex_destroy(&impl->mutex);
+            free(impl);
+            return TUXRT_ERR_NOMEM;
+        }
+
+        /* Open slave interface */
+        status_t st = et_slave_open(impl->slave, impl->ifname);
+        if (st != SUCCESS) {
+            et_slave_destroy(impl->slave);
+            pthread_mutex_destroy(&impl->mutex);
+            free(impl);
+            return TUXRT_ERR_IO;
+        }
+    } else {
+        /* Create EtherTux master */
+        impl->master = et_master_create();
+        if (!impl->master) {
+            pthread_mutex_destroy(&impl->mutex);
+            free(impl);
+            return TUXRT_ERR_NOMEM;
+        }
+
+        /* Open interface with auto-detected link speed */
+        status_t st = et_master_open_auto(impl->master, impl->ifname);
+        if (st != SUCCESS) {
+            et_master_destroy(impl->master);
+            pthread_mutex_destroy(&impl->mutex);
+            free(impl);
+            return TUXRT_ERR_IO;
+        }
+
+        /* Enable TX ring for zero-syscall transmission (if supported) */
+        et_tx_mode_t tx_mode = ET_TX_AUTO;
+        if (getenv("TUXRT_ET_TX_RING") != NULL) {
+            tx_mode = ET_TX_RING;
+        }
+        (void)et_master_set_tx_mode(impl->master, tx_mode);
+
+        /* Enable local ID admission (Level 2 deterministic MAC) */
+        et_aalid_config_t aalid_cfg;
+        et_aalid_default_config(&aalid_cfg);
+        aalid_cfg.id_max = 0xFFFE;  /* Reserve 0xFFFF for broadcast */
+        aalid_cfg.grace_ms = 600000; /* 600 seconds heartbeat timeout */
+        aalid_cfg.table_slots = 1024;
+        (void)et_master_enable_local_ids(impl->master, &aalid_cfg);
+
+        /* Set a default local ID for the master (can be changed later) */
+        uint16_t local_id = 0x0100;  /* Default master ID */
+        (void)et_master_set_local_id(impl->master, local_id);
     }
-
-    /* Enable TX ring for zero-syscall transmission (if supported) */
-    ChronosRT_et_tx_mode_t tx_mode = ChronosRT_ET_TX_AUTO;
-    if (getenv("TUXRT_ET_TX_RING") != NULL) {
-        tx_mode = ChronosRT_ET_TX_RING;
-    }
-    (void)ChronosRT_et_master_set_tx_mode(impl->master, tx_mode);
-
-    /* Initialize QoS and optional features */
-    (void)ethertux_init_features(impl, &adapter->config);
-
-    /* Enable local ID admission (Level 2 deterministic MAC) */
-    ChronosRT_et_aalid_config_t aalid_cfg;
-    ChronosRT_et_aalid_default_config(&aalid_cfg);
-    aalid_cfg.id_max = 0xFFFE;  /* Reserve 0xFFFF for broadcast */
-    aalid_cfg.grace_ms = 600000; /* 600 seconds heartbeat timeout */
-    aalid_cfg.table_slots = 1024;
-    (void)ChronosRT_et_master_enable_local_ids(impl->master, &aalid_cfg);
-
-    /* Set a default local ID for the master (can be changed later) */
-    uint16_t local_id = 0x0100;  /* Default master ID */
-    (void)ChronosRT_et_master_set_local_id(impl->master, local_id);
 
     pthread_mutex_lock(&adapter->mutex);
     impl->configured = true;
@@ -174,7 +202,19 @@ static tuxrt_err_t ethertux_close(tuxrt_transport_adapter_t* adapter) {
     pthread_mutex_lock(&impl->mutex);
 
     if (impl->configured) {
-        ChronosRT_et_master_close(impl->master);
+        if (impl->mode == TUXRT_NIC_MODE_SLAVE) {
+            if (impl->slave) {
+                et_slave_close(impl->slave);
+                et_slave_destroy(impl->slave);
+                impl->slave = NULL;
+            }
+        } else {
+            if (impl->master) {
+                et_master_close(impl->master);
+                et_master_destroy(impl->master);
+                impl->master = NULL;
+            }
+        }
         impl->configured = false;
     }
 
@@ -197,27 +237,52 @@ static tuxrt_err_t ethertux_send(tuxrt_transport_adapter_t* adapter,
     ethertux_transport_impl_t* impl = (ethertux_transport_impl_t*)adapter->impl;
 
     /* Cap payload to maximum allowed */
-    uint16_t payload_len = (len > ChronosRT_ET_MAX_PAYLOAD) ? ChronosRT_ET_MAX_PAYLOAD : (uint16_t)len;
+    uint16_t payload_len = (len > ET_MAX_PAYLOAD) ? ET_MAX_PAYLOAD : (uint16_t)len;
 
-    /* Use hardware pacing if deadline is specified and txtime is available */
-    if (deadline > 0) {
-        ChronosRT_status_t st = ChronosRT_et_master_send_at(impl->master,
-            ChronosRT_ET_P0, ChronosRT_ET_TYPE_DATA, 1u, data, payload_len, deadline);
-        if (st == ChronosRT_SUCCESS) {
-            tuxrt_sirc_update_health_success(adapter);
+    /* Send based on mode */
+    if (impl->mode == TUXRT_NIC_MODE_SLAVE) {
+        /* Slave mode: broadcast send */
+        if (deadline > 0) {
+            status_t st = et_slave_send_at(impl->slave,
+                ET_P0, ET_TYPE_DATA, 1u, data, payload_len, deadline);
+            if (st == SUCCESS) {
+                tuxrt_sirc_update_health_success(adapter);
+            } else {
+                tuxrt_sirc_update_health_failure(adapter);
+            }
+            return (st == SUCCESS) ? TUXRT_OK : TUXRT_ERR_IO;
         } else {
-            tuxrt_sirc_update_health_failure(adapter);
+            status_t st = et_slave_send(impl->slave,
+                ET_P0, ET_TYPE_DATA, 1u, data, payload_len);
+            if (st == SUCCESS) {
+                tuxrt_sirc_update_health_success(adapter);
+            } else {
+                tuxrt_sirc_update_health_failure(adapter);
+            }
+            return (st == SUCCESS) ? TUXRT_OK : TUXRT_ERR_IO;
         }
-        return (st == ChronosRT_SUCCESS) ? TUXRT_OK : TUXRT_ERR_IO;
     } else {
-        ChronosRT_status_t st = ChronosRT_et_master_send(impl->master,
-            ChronosRT_ET_P0, ChronosRT_ET_TYPE_DATA, 1u, data, payload_len);
-        if (st == ChronosRT_SUCCESS) {
-            tuxrt_sirc_update_health_success(adapter);
+        /* Master mode */
+        /* Use hardware pacing if deadline is specified and txtime is available */
+        if (deadline > 0) {
+            status_t st = et_master_send_at(impl->master,
+                ET_P0, ET_TYPE_DATA, 1u, data, payload_len, deadline);
+            if (st == SUCCESS) {
+                tuxrt_sirc_update_health_success(adapter);
+            } else {
+                tuxrt_sirc_update_health_failure(adapter);
+            }
+            return (st == SUCCESS) ? TUXRT_OK : TUXRT_ERR_IO;
         } else {
-            tuxrt_sirc_update_health_failure(adapter);
+            status_t st = et_master_send(impl->master,
+                ET_P0, ET_TYPE_DATA, 1u, data, payload_len);
+            if (st == SUCCESS) {
+                tuxrt_sirc_update_health_success(adapter);
+            } else {
+                tuxrt_sirc_update_health_failure(adapter);
+            }
+            return (st == SUCCESS) ? TUXRT_OK : TUXRT_ERR_IO;
         }
-        return (st == ChronosRT_SUCCESS) ? TUXRT_OK : TUXRT_ERR_IO;
     }
 }
 
@@ -242,20 +307,36 @@ static tuxrt_err_t ethertux_recv(tuxrt_transport_adapter_t* adapter,
         timeout_us = 1000000u;  /* 1 second default timeout */
     }
 
-    /* Receive a frame */
-    ChronosRT_et_header_t hdr;
-    int ret = ChronosRT_et_master_recv(impl->master, &hdr, buf, (uint32_t)*len, timeout_us);
+    /* Receive based on mode */
+    if (impl->mode == TUXRT_NIC_MODE_SLAVE) {
+        /* Slave mode: receive frames addressed to us */
+        et_header_t hdr;
+        int ret = et_slave_recv(impl->slave, &hdr, buf, (uint32_t)*len, timeout_us);
 
-    if (ret < 0) {
-        *len = 0;
-        tuxrt_sirc_update_health_failure(adapter);
-        return TUXRT_ERR_IO;
+        if (ret < 0) {
+            *len = 0;
+            tuxrt_sirc_update_health_failure(adapter);
+            return TUXRT_ERR_IO;
+        }
+
+        *len = (size_t)ret;
+        tuxrt_sirc_update_health_success(adapter);
+        return TUXRT_OK;
+    } else {
+        /* Master mode: receive frames */
+        et_header_t hdr;
+        int ret = et_master_recv(impl->master, &hdr, buf, (uint32_t)*len, timeout_us);
+
+        if (ret < 0) {
+            *len = 0;
+            tuxrt_sirc_update_health_failure(adapter);
+            return TUXRT_ERR_IO;
+        }
+
+        *len = (size_t)ret;
+        tuxrt_sirc_update_health_success(adapter);
+        return TUXRT_OK;
     }
-
-    *len = (size_t)ret;
-    tuxrt_sirc_update_health_success(adapter);
-
-    return TUXRT_OK;
 }
 
 static tuxrt_err_t ethertux_flush(tuxrt_transport_adapter_t* adapter) {
@@ -300,7 +381,7 @@ static tuxrt_err_t ethertux_activate(tuxrt_transport_adapter_t* adapter) {
 
     /* Create master if needed */
     if (!impl->master) {
-        impl->master = ChronosRT_et_master_create();
+        impl->master = et_master_create();
         if (!impl->master) {
             pthread_mutex_unlock(&impl->mutex);
             return TUXRT_ERR_NOMEM;
@@ -308,10 +389,10 @@ static tuxrt_err_t ethertux_activate(tuxrt_transport_adapter_t* adapter) {
     }
 
     /* Open interface */
-    ChronosRT_status_t st = ChronosRT_et_master_open_auto(impl->master, impl->ifname);
-    if (st != ChronosRT_SUCCESS) {
+    status_t st = et_master_open_auto(impl->master, impl->ifname);
+    if (st != SUCCESS) {
         if (impl->master) {
-            ChronosRT_et_master_destroy(impl->master);
+            et_master_destroy(impl->master);
             impl->master = NULL;
         }
         pthread_mutex_unlock(&impl->mutex);
@@ -342,9 +423,13 @@ static tuxrt_err_t ethertux_deactivate(tuxrt_transport_adapter_t* adapter) {
 
     adapter->active = false;
 
-    if (impl->master) {
-        ChronosRT_et_master_close(impl->master);
-        ChronosRT_et_master_destroy(impl->master);
+    if (impl->slave) {
+        et_slave_close(impl->slave);
+        et_slave_destroy(impl->slave);
+        impl->slave = NULL;
+    } else if (impl->master) {
+        et_master_close(impl->master);
+        et_master_destroy(impl->master);
         impl->master = NULL;
     }
     impl->configured = false;
@@ -355,7 +440,7 @@ static tuxrt_err_t ethertux_deactivate(tuxrt_transport_adapter_t* adapter) {
 }
 
 /* Export the vtable for EtherTux transport (EtherType 0x88B5) */
-CHRONOSRT_API const tuxrt_transport_vtable_t tuxrt_transport_ethertux_vtable = {
+API const tuxrt_transport_vtable_t tuxrt_transport_ethertux_vtable = {
     .abi_version = 1,
     .open = ethertux_open,
     .close = ethertux_close,

@@ -1,4 +1,4 @@
-# Manual de Usuario Final - ChronosRT Master
+# Manual de Usuario Final - libtuxwarp
 
 **Versión del Software:** 0.1.0  
 **Fecha:** Noviembre 2026  
@@ -24,13 +24,13 @@
 
 ## 1. Introducción
 
-### 1.1 ¿Qué es ChronosRT Master?
+### 1.1 ¿Qué es libtuxwarp?
 
-ChronosRT Master es un **framework de tiempo real determinista** diseñado para sistemas que requieren comunicación ultrarrápida y precisa. Imagina que es como un sistema de mensajería ultraveloz que garantiza que los mensajes lleguen en exactamente el tiempo esperado, sin demoras impredecibles.
+libtuxwarp es un **framework de tiempo real determinista** diseñado para sistemas que requieren comunicación ultrarrápida y precisa. Imagina que es como un sistema de mensajería ultraveloz que garantiza que los mensajes lleguen en exactamente el tiempo esperado, sin demoras impredecibles.
 
 **¿Para qué sirve?**
 
-ChronosRT Master se utiliza en sistemas industriales como:
+libtuxwarp se utiliza en sistemas industriales como:
 - Líneas de producción automatizadas
 - Robots de fabricación
 - Sistemas de control de máquinas
@@ -90,7 +90,6 @@ Antes de continuar, es importante entender algunos términos:
 - Orange Pi Zero2, Zero3, 3 LTS, 4 LTS, 5 y 5 Plus
 - BigTreeTech CB1/CB2 y MKS PI/Skipr
 - Radxa Rock Pi 4, Rock 3 y Rock 5
-- Banana Pi M2 Zero, M4 y M5
 - ROCK 5B
 
 La matriz completa (**29 perfiles**) está en `scripts/lib/sbc.sh` y se consulta
@@ -112,7 +111,7 @@ motor criptográfico, PHC y flags de compilación.
 | Bibliotecas | pthread, rt, m, dl | Últimas versiones estables |
 
 > Desde Linux 6.12, PREEMPT_RT está integrado en mainline y se activa con
-> `preempt=full`. ChronosRT detecta el estado real del kernel y avisa si no hay
+> `preempt=full`. libtuxwarp detecta el estado real del kernel y avisa si no hay
 > RT; no modifica la configuración del sistema.
 
 ### 2.3 Requisitos de Red
@@ -130,7 +129,7 @@ motor criptográfico, PHC y flags de compilación.
 
 #### Paso 1: Preparación del Sistema
 
-Antes de instalar ChronosRT Master, asegúrate de que tu sistema esté actualizado:
+Antes de instalar libtuxwarp, asegúrate de que tu sistema esté actualizado:
 
 ```bash
 # Para sistemas Debian/Ubuntu
@@ -153,12 +152,12 @@ cd ~
 
 # Clonar el repositorio (o copiar desde el medio de instalación)
 # Si tienes el código en un archivo ZIP:
-unzip ChronosRT-v0.1.0.zip
-cd ChronosRT_MASTER
+unzip libtuxwarp-v0.1.0.zip
+cd libtuxwarp
 
 # O si usas git:
-git clone https://github.com/LauOtero/ChronosRT_MASTER.git
-cd ChronosRT_MASTER
+git clone https://github.com/LauOtero/libtuxwarp.git
+cd libtuxwarp
 ```
 
 #### Paso 3: Configurar la Construcción
@@ -176,18 +175,18 @@ cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 ```bash
 # Habilitar optimizaciones SIMD (recomendado)
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHRONOSRT_USE_SIMD=ON
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_SIMD=ON
 
 # Habilitar soporte para hugepages (mejor rendimiento)
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHRONOSRT_USE_HUGEPAGES=ON
+cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_HUGEPAGES=ON
 
 # Construir con todas las opciones
 cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCHRONOSRT_USE_SIMD=ON \
-    -DCHRONOSRT_USE_HUGEPAGES=ON \
-    -DCHRONOSRT_BUILD_TESTS=ON \
-    -DCHRONOSRT_BUILD_BENCHMARK=ON \
-    -DCHRONOSRT_BUILD_PROTOCOLS=ON
+    -DUSE_SIMD=ON \
+    -DUSE_HUGEPAGES=ON \
+    -DBUILD_TESTS=ON \
+    -DBUILD_BENCHMARK=ON \
+    -DBUILD_PROTOCOLS=ON
 ```
 
 También puede usar el script de ayuda, que resuelve toolchain y flags por SBC:
@@ -214,7 +213,7 @@ make -j$(nproc)
 sudo make install
 
 # O instalar en un directorio local (sin sudo)
-cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/chronosrt-install
+cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/libtuxwarp-install
 make install
 ```
 
@@ -230,23 +229,23 @@ cd build
 ctest --output-on-failure
 
 # Deberías ver:
-# 10/10 Test #10: chronosrt_test_aalid .......... Passed
+# 10/10 Test #10: test_aalid .......... Passed
 # 100% tests passed out of 10
 ```
 
 Cada binario informa además su número de aserciones:
 
 ```bash
-./chronosrt_test               # 20/20
-./chronosrt_test_lockfree      # 26/26
-./chronosrt_test_rt            # 30/30
-./chronosrt_test_resilience    # 29/29
-./chronosrt_test_integration   # 27/27
-./chronosrt_test_network       # 58/58
-./chronosrt_test_hwaccel       # 40/40
-./chronosrt_test_ethertux      # 103/103
-./chronosrt_test_ethertux_v010 # 152/152
-./chronosrt_test_aalid         # 62/62
+./test               # 20/20
+./test_lockfree      # 26/26
+./test_rt            # 30/30
+./test_resilience    # 29/29
+./test_integration   # 27/27
+./test_network       # 58/58
+./test_hwaccel       # 40/40
+./test_ethertux      # 103/103
+./test_ethertux_v010 # 152/152
+./test_aalid         # 62/62
 ```
 
 Total: **547 aserciones**.
@@ -260,7 +259,7 @@ Total: **547 aserciones**.
 sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
 # Configurar para cross-compilation ARM64
-cd ChronosRT_MASTER
+cd libtuxwarp
 mkdir -p build && cd build
 cmake .. \
     -DCMAKE_TOOLCHAIN_FILE=../cmake/aarch64-linux-gnu.cmake \
@@ -276,7 +275,7 @@ make -j$(nproc)
 cmake .. \
     -DCMAKE_TOOLCHAIN_FILE=../cmake/jetson.cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCHRONOSRT_USE_SIMD=ON
+    -DUSE_SIMD=ON
 
 make -j$(nproc)
 ```
@@ -287,23 +286,23 @@ make -j$(nproc)
 
 ### 4.1 Configuración del runtime
 
-La configuración se pasa **programáticamente** en `ChronosRT_config_t` (véase la
+La configuración se pasa **programáticamente** en `config_t` (véase la
 [referencia de API](API.md)). La biblioteca **no lee** archivos `.conf` por sí
 misma; los ejemplos de este apartado son una plantilla operativa para que su
 aplicación los cargue y rellene la estructura.
 
 ```
-/etc/chronosrt/           # Configuración global del sistema (plantilla)
-~/.config/chronosrt/      # Configuración por usuario (plantilla)
+/etc/libtuxwarp/           # Configuración global del sistema (plantilla)
+~/.config/libtuxwarp/      # Configuración por usuario (plantilla)
 ./config/                 # Configuración local del proyecto (plantilla)
 ```
 
 ### 4.2 Archivo de Configuración Principal
 
-Crea un archivo llamado `chronosrt.conf` (plantilla que su aplicación carga) en tu directorio de trabajo:
+Crea un archivo llamado `libtuxwarp.conf` (plantilla que su aplicación carga) en tu directorio de trabajo:
 
 ```ini
-# Configuración básica de ChronosRT Master
+# Configuración básica de libtuxwarp
 
 [general]
 # Versión del formato de configuración
@@ -418,22 +417,22 @@ stack_size_kb = 128
 
 ### 4.4 Configuración de Variables de Entorno
 
-ChronosRT Master también puede configurarse mediante variables de entorno
-(convenciones de la aplicación; la biblioteca solo lee `CHRONOSRT_PROTOCOL`
+libtuxwarp también puede configurarse mediante variables de entorno
+(convenciones de la aplicación; la biblioteca solo lee `PROTOCOL`
 directamente):
 
 ```bash
 # Directorio de configuración
-export ChronosRT_CONFIG_DIR=/etc/chronosrt
+export CONFIG_DIR=/etc/libtuxwarp
 
 # Nivel de logging (0=silencioso, 1=errores, 2=info, 3=debug)
-export ChronosRT_LOG_LEVEL=2
+export LOG_LEVEL=2
 
 # Archivo de log
-export ChronosRT_LOG_FILE=/var/log/chronosrt.log
+export LOG_FILE=/var/log/libtuxwarp.log
 
 # Habilitar modo de diagnóstico
-export ChronosRT_DIAGNOSTIC=1
+export DIAGNOSTIC=1
 ```
 
 ---
@@ -474,38 +473,38 @@ flowchart TD
 
 ```bash
 #!/bin/bash
-# startup.sh - Script de arranque de ChronosRT Master
+# startup.sh - Script de arranque de libtuxwarp
 
-echo "Iniciando ChronosRT Master..."
+echo "Iniciando libtuxwarp..."
 
 # Verificar que el sistema cumple requisitos
 echo "[1/5] Verificando sistema..."
-if [ ! -f ./build/chronosrt_bench ]; then
-    echo "Error: ChronosRT Master no está compilado. Ejecuta 'make' primero."
+if [ ! -f ./build/bench ]; then
+    echo "Error: libtuxwarp no está compilado. Ejecuta 'make' primero."
     exit 1
 fi
 
 # Cargar configuración
 echo "[2/5] Cargando configuración..."
-if [ -f ./config/chronosrt.conf ]; then
-    source ./config/chronosrt.conf
-    echo "  Configuración cargada desde ./config/chronosrt.conf"
+if [ -f ./config/libtuxwarp.conf ]; then
+    source ./config/libtuxwarp.conf
+    echo "  Configuración cargada desde ./config/libtuxwarp.conf"
 else
     echo "  Usando configuración por defecto"
 fi
 
-# Inicializar ChronosRT Master
-echo "[3/5] Inicializando ChronosRT Master..."
-export ChronosRT_LOG_LEVEL=2
+# Inicializar libtuxwarp
+echo "[3/5] Inicializando libtuxwarp..."
+export LOG_LEVEL=2
 
 # Ejecutar modo de verificación
 echo "[4/5] Verificando componentes..."
-./build/chronosrt_bench --mode=latency --duration=5
+./build/bench --mode=latency --duration=5
 
 echo "[5/5] Sistema listo."
 echo ""
-echo "ChronosRT Master está operativo."
-echo "Ejecuta './build/chronosrt_bench' para comenzar."
+echo "libtuxwarp está operativo."
+echo "Ejecuta './build/bench' para comenzar."
 ```
 
 ### 5.2 Apagado del Sistema
@@ -529,12 +528,12 @@ flowchart TD
 
 ```bash
 #!/bin/bash
-# shutdown.sh - Script de apagado de ChronosRT Master
+# shutdown.sh - Script de apagado de libtuxwarp
 
-echo "Deteniendo ChronosRT Master..."
+echo "Deteniendo libtuxwarp..."
 
 # Enviar señal de terminación a su aplicación (sustituya el nombre)
-APP="mi_aplicacion_chronosrt"
+APP="mi_aplicacion_libtuxwarp"
 pkill -TERM "$APP"
 
 # Esperar a que termine de forma ordenada
@@ -543,29 +542,29 @@ sleep 2
 # Si quedan procesos zombie, forzar terminación
 pkill -9 "$APP" 2>/dev/null || true
 
-echo "ChronosRT Master detenido."
+echo "libtuxwarp detenido."
 ```
 
 ### 5.3 Monitoreo en Tiempo Real
 
-ChronosRT Master proporciona métricas en tiempo real:
+libtuxwarp proporciona métricas en tiempo real:
 
 ```bash
 # Ver métricas durante ejecución
-./build/chronosrt_bench --mode=latency --duration=60 --threads=4
+./build/bench --mode=latency --duration=60 --threads=4
 
 # Salida real (host de ejemplo sin PREEMPT_RT):
-# ChronosRT Benchmark v0.1.0
+# libtuxwarp Benchmark v0.1.0
 # Platform: 4
 # Mode: 0
 # Duration: 60s
 #
-# [chronosrt] Kernel: 7.2.11 (...)
-# [chronosrt] PREEMPT_RT: no
-# [chronosrt] AVISO: kernel sin PREEMPT_RT; la latencia determinista puede degradarse.
-# [chronosrt] SCHED_FIFO: aplicado (prioridad 80)
+# [libtuxwarp] Kernel: 7.2.11 (...)
+# [libtuxwarp] PREEMPT_RT: no
+# [libtuxwarp] AVISO: kernel sin PREEMPT_RT; la latencia determinista puede degradarse.
+# [libtuxwarp] SCHED_FIFO: aplicado (prioridad 80)
 #
-# === ChronosRT Benchmark Results ===
+# === libtuxwarp Benchmark Results ===
 # Total Events:        ...
 # WCET (ns):           ...
 # Best Case (ns):      ...
@@ -617,14 +616,14 @@ detalle y la metodología están en [BENCHMARKING.md](BENCHMARKING.md).
 | Comando | Descripción |
 |---------|-------------|
 | `ctest --test-dir build --output-on-failure` | Ejecutar las 10 suites |
-| `./chronosrt_test` | Suite de núcleo (20 aserciones) |
-| `./chronosrt_bench --mode=latency` | Benchmark de latencia |
-| `./chronosrt_bench --mode=throughput` | Benchmark de throughput |
-| `./chronosrt_bench --mode=jitter` | Análisis de jitter |
-| `./chronosrt_bench --mode=stress` | Prueba de estrés |
-| `./chronosrt_bench --mode=wcet` | Análisis de WCET |
-| `./chronosrt_bench --mode=crc` | Capacidad de CRC-32C por backend |
-| `./chronosrt_bench --mode=frame` | Coste de construir/parsear por trama |
+| `./test` | Suite de núcleo (20 aserciones) |
+| `./bench --mode=latency` | Benchmark de latencia |
+| `./bench --mode=throughput` | Benchmark de throughput |
+| `./bench --mode=jitter` | Análisis de jitter |
+| `./bench --mode=stress` | Prueba de estrés |
+| `./bench --mode=wcet` | Análisis de WCET |
+| `./bench --mode=crc` | Capacidad de CRC-32C por backend |
+| `./bench --mode=frame` | Coste de construir/parsear por trama |
 
 ### 5.6 Identidad de nodos (ID local determinista)
 
@@ -636,27 +635,27 @@ Cada nodo puede usar una identidad de 16 bits codificada en su MAC
 - La identidad sobrevive a reinicios (la tabla `{MAC → ID}` se persiste).
 
 ```c
-ChronosRT_et_master_t* m = ChronosRT_et_master_create();
-ChronosRT_et_aalid_config_t cfg;
-ChronosRT_et_aalid_default_config(&cfg);   /* 65 536 IDs, gracia de 10 min */
+et_master_t* m = et_master_create();
+et_aalid_config_t cfg;
+et_aalid_default_config(&cfg);   /* 65 536 IDs, gracia de 10 min */
 
-ChronosRT_et_master_enable_local_ids(m, &cfg);
-ChronosRT_et_master_open_auto(m, "enp2s0");     /* detecta 1G/2.5G/10G */
-ChronosRT_et_master_set_local_id(m, 0x0102);    /* ID propio del maestro */
+et_master_enable_local_ids(m, &cfg);
+et_master_open_auto(m, "enp2s0");     /* detecta 1G/2.5G/10G */
+et_master_set_local_id(m, 0x0102);    /* ID propio del maestro */
 
 /* Admisión de un nodo que envía su MAC de fábrica y un nonce */
 uint16_t id = 0;
-ChronosRT_et_aalid_result_t res;
-if (ChronosRT_et_master_admit_node(m, mac_fabrica, nonce, now_ms, &id, &res) ==
-    ChronosRT_SUCCESS) {
+et_aalid_result_t res;
+if (et_master_admit_node(m, mac_fabrica, nonce, now_ms, &id, &res) ==
+    SUCCESS) {
     /* enviar al nodo por su identidad (unicast, sin difusión) */
-    ChronosRT_et_master_send_to(m, id, ChronosRT_ET_P2, ChronosRT_ET_TYPE_DATA,
+    et_master_send_to(m, id, ET_P2, ET_TYPE_DATA,
                                 1, payload, len);
 }
 
 /* Mantenimiento periódico, fuera del superframe */
-ChronosRT_et_master_expire_local_ids(m, now_ms);
-ChronosRT_et_aalid_save(ChronosRT_et_master_aalid(m), "/var/lib/chronosrt/aalid.bin");
+et_master_expire_local_ids(m, now_ms);
+et_aalid_save(et_master_aalid(m), "/var/lib/libtuxwarp/aalid.bin");
 ```
 
 `admit_node` devuelve además el motivo en `res`: `OK`, `COLLISION` (se asignó
@@ -666,16 +665,16 @@ siempre; el unicast solo si va dirigido a su MAC local.
 
 Límites y mantenimiento:
 
-- Rango de IDs: **65 536** (0 … 65 535). `ChronosRT_ET_LOCAL_ID_NONE` (0xFFFF)
+- Rango de IDs: **65 536** (0 … 65 535). `ET_LOCAL_ID_NONE` (0xFFFF)
   significa «sin ID local»; con `send_to()` equivale a difusión.
 - La tabla soporta **256 nodos** por defecto (≈ 14 KB de RAM). Para más nodos,
   suba `cfg.table_slots` (potencia de 2; 1024 ⇒ ≈ 24 KB de tabla).
 - `expire_local_ids()` libera los IDs sin heartbeat en `cfg.grace_ms` (10 min
   por defecto). Llámelo una vez por superframe o en el hilo de baja prioridad.
-- `ChronosRT_et_aalid_release()` recorre la tabla (O(slots)); es administrativa,
+- `et_aalid_release()` recorre la tabla (O(slots)); es administrativa,
   no la invoque en el camino crítico.
 - El fichero de persistencia debe estar en un directorio con permiso de
-  escritura; `save()` y `load()` devuelven `ChronosRT_ERROR_IO` si falla.
+  escritura; `save()` y `load()` devuelven `ERROR_IO` si falla.
 
 ---
 
@@ -683,11 +682,11 @@ Límites y mantenimiento:
 
 ### 6.1 Problemas Comunes y Soluciones
 
-#### Problema: "Command not found" al ejecutar ChronosRT Master
+#### Problema: "Command not found" al ejecutar libtuxwarp
 
 **Síntoma:**
 ```
-bash: ./chronosrt_test: command not found
+bash: ./test: command not found
 ```
 
 **Causa:** El programa no está compilado o no está en el directorio correcto.
@@ -695,14 +694,14 @@ bash: ./chronosrt_test: command not found
 **Solución:**
 ```bash
 # Verificar que existe el archivo
-ls -la build/chronosrt_test
+ls -la build/test
 
 # Si no existe, recompilar
 cd build
 cmake .. && make
 
 # Verificar que es ejecutable
-chmod +x build/chronosrt_test
+chmod +x build/test
 ```
 
 #### Problema: Fallo de segmentación al iniciar
@@ -720,13 +719,13 @@ Segmentation fault (core dumped)
 **Solución:**
 ```bash
 # Reducir tamaño del pool de eventos
-export ChronosRT_EVENT_POOL_SIZE=8192
+export EVENT_POOL_SIZE=8192
 
 # Verificar memoria disponible
 free -h
 
 # Ejecutar con valgrind para debug
-valgrind ./build/chronosrt_test
+valgrind ./build/test
 ```
 
 #### Problema: Alta latencia o jitter elevado
@@ -743,25 +742,25 @@ valgrind ./build/chronosrt_test
 # 1. Verificar que el kernel tiene PREEMPT_RT
 zcat /proc/config.gz | grep PREEMPT
 
-# 2. Aislar CPUs para ChronosRT Master
+# 2. Aislar CPUs para libtuxwarp
 # Editar /etc/default/grub y añadir:
 # GRUB_CMDLINE_LINUX="... isolcpus=2,3 ..."
 
 # 3. Reiniciar y ejecutar con CPU affinity
-taskset -c 2,3 ./build/chronosrt_bench --mode=latency
+taskset -c 2,3 ./build/bench --mode=latency
 ```
 
 #### Problema: Error "Cannot allocate memory"
 
 **Síntoma:**
 ```
-ChronosRT_error: Cannot allocate memory
+error: Cannot allocate memory
 ```
 
 **Solución:**
 ```bash
 # Reducir el tamaño del pool de eventos
-# En chronosrt.conf:
+# En libtuxwarp.conf:
 [performance]
 event_pool_size = 16384  # Reducir de 65536
 
@@ -773,7 +772,7 @@ sudo sysctl -w vm.nr_hugepages=64
 
 | Código | Nombre | Descripción | Solución |
 |--------|--------|-------------|----------|
-| 0 | `ChronosRT_SUCCESS` | Operación exitosa | — |
+| 0 | `SUCCESS` | Operación exitosa | — |
 | -1 | `ERROR_INIT` | Fallo en inicialización | Verificar configuración |
 | -2 | `ERROR_MEMORY` | Fallo de asignación | Reducir `event_pool_size` |
 | -3 | `ERROR_CPU` | Error de CPU | Verificar soporte SIMD |
@@ -795,7 +794,7 @@ sudo sysctl -w vm.nr_hugepages=64
 #!/bin/bash
 # diagnose.sh - Script de diagnóstico
 
-echo "=== ChronosRT Master Diagnostic Report ==="
+echo "=== libtuxwarp Diagnostic Report ==="
 echo "Date: $(date)"
 echo ""
 
@@ -823,10 +822,10 @@ echo "--- Hugepages ---"
 cat /proc/meminfo | grep -i huge
 echo ""
 
-echo "--- ChronosRT Master Build ---"
-if [ -f ./build/chronosrt_test ]; then
+echo "--- libtuxwarp Build ---"
+if [ -f ./build/test ]; then
     echo "Build: OK"
-    ./build/chronosrt_test 2>&1 | head -5
+    ./build/test 2>&1 | head -5
 else
     echo "Build: NOT FOUND"
 fi
@@ -852,16 +851,16 @@ fi
 #!/bin/bash
 # daily_check.sh - Verificación diaria
 
-LOGFILE="/var/log/chronosrt/daily.log"
+LOGFILE="/var/log/libtuxwarp/daily.log"
 
-echo "=== Verificación Diaria ChronosRT Master ===" >> $LOGFILE
+echo "=== Verificación Diaria libtuxwarp ===" >> $LOGFILE
 echo "Fecha: $(date)" >> $LOGFILE
 
 # Verificar que el servicio está corriendo
-if pgrep -x "mi_aplicacion_chronosrt" > /dev/null; then
-    echo "[OK] ChronosRT Master está ejecutándose" >> $LOGFILE
+if pgrep -x "mi_aplicacion_libtuxwarp" > /dev/null; then
+    echo "[OK] libtuxwarp está ejecutándose" >> $LOGFILE
 else
-    echo "[ALERTA] ChronosRT Master NO está ejecutándose" >> $LOGFILE
+    echo "[ALERTA] libtuxwarp NO está ejecutándose" >> $LOGFILE
 fi
 
 # Verificar uso de memoria
@@ -884,24 +883,24 @@ echo "" >> $LOGFILE
 #!/bin/bash
 # backup.sh - Respaldo de configuración
 
-BACKUP_DIR="/mnt/backup/chronosrt"
+BACKUP_DIR="/mnt/backup/libtuxwarp"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p $BACKUP_DIR
 
 # Respaldar configuración (plantillas de su aplicación)
-cp -r /etc/chronosrt $BACKUP_DIR/config_$DATE 2>/dev/null || true
-cp -r ~/.config/chronosrt $BACKUP_DIR/user_config_$DATE 2>/dev/null || true
+cp -r /etc/libtuxwarp $BACKUP_DIR/config_$DATE 2>/dev/null || true
+cp -r ~/.config/libtuxwarp $BACKUP_DIR/user_config_$DATE 2>/dev/null || true
 
 # Respaldar logs (últimos 7 días)
-find /var/log/chronosrt -name "*.log" -mtime -7 -exec cp {} $BACKUP_DIR/ \;
+find /var/log/libtuxwarp -name "*.log" -mtime -7 -exec cp {} $BACKUP_DIR/ \;
 
 # Comprimir
 cd $BACKUP_DIR
-tar -czf ChronosRT_backup_$DATE.tar.gz *
+tar -czf backup_$DATE.tar.gz *
 rm -rf config_$DATE user_config_$DATE
 
-echo "Respaldo guardado: $BACKUP_DIR/ChronosRT_backup_$DATE.tar.gz"
+echo "Respaldo guardado: $BACKUP_DIR/backup_$DATE.tar.gz"
 ```
 
 ---
@@ -910,18 +909,18 @@ echo "Respaldo guardado: $BACKUP_DIR/ChronosRT_backup_$DATE.tar.gz"
 
 ### 8.1 Preguntas Generales
 
-**P: ¿ChronosRT Master funciona en Windows?**
-R: ChronosRT Master está diseñado principalmente para sistemas Linux. Aunque puede compilarse en Windows usando WSL (Windows Subsystem for Linux), para producción se recomienda Linux con kernel PREEMPT_RT.
+**P: ¿libtuxwarp funciona en Windows?**
+R: libtuxwarp está diseñado principalmente para sistemas Linux. Aunque puede compilarse en Windows usando WSL (Windows Subsystem for Linux), para producción se recomienda Linux con kernel PREEMPT_RT.
 
 ---
 
-**P: ¿Cuál es la diferencia entre ChronosRT Master y SOEM?**
-R: SOEM (Simple Open EtherCAT Master) es un maestro EtherCAT de propósito general. ChronosRT Master implementa su **propio maestro EtherCAT autónomo** (sockets `AF_PACKET`, EtherType `0x88A4`) conforme a IEC 61158 / ETG.1000, **sin depender de SOEM ni de ningún otro maestro externo**. Además del protocolo EtherCAT, ChronosRT Master aporta tiempo real determinista (planificación `SCHED_DEADLINE`/`SCHED_FIFO`), resiliencia (validación por WKC, detección de esclavas perdidas, redundancia de red) y rendimiento (varios datagramas por trama).
+**P: ¿Cuál es la diferencia entre libtuxwarp y SOEM?**
+R: SOEM (Simple Open EtherCAT Master) es un maestro EtherCAT de propósito general. libtuxwarp implementa su **propio maestro EtherCAT autónomo** (sockets `AF_PACKET`, EtherType `0x88A4`) conforme a IEC 61158 / ETG.1000, **sin depender de SOEM ni de ningún otro maestro externo**. Además del protocolo EtherCAT, libtuxwarp aporta tiempo real determinista (planificación `SCHED_DEADLINE`/`SCHED_FIFO`), resiliencia (validación por WKC, detección de esclavas perdidas, redundancia de red) y rendimiento (varios datagramas por trama).
 
 ---
 
-**P: ¿Puedo usar ChronosRT Master sin experiencia en sistemas embebidos?**
-R: Sí, ChronosRT Master está diseñado para ser fácil de usar. El Manual de Usuario proporciona instrucciones paso a paso. Sin embargo, para optimización avanzada se recomienda tener conocimientos básicos de Linux y sistemas de tiempo real.
+**P: ¿Puedo usar libtuxwarp sin experiencia en sistemas embebidos?**
+R: Sí, libtuxwarp está diseñado para ser fácil de usar. El Manual de Usuario proporciona instrucciones paso a paso. Sin embargo, para optimización avanzada se recomienda tener conocimientos básicos de Linux y sistemas de tiempo real.
 
 ---
 
@@ -945,7 +944,7 @@ R: Una variación pequeña es normal debido a factores del sistema. Si la variac
 
 ---
 
-**P: ¿Cuántos eventos puede procesar ChronosRT Master por segundo?**
+**P: ¿Cuántos eventos puede procesar libtuxwarp por segundo?**
 R: El límite teórico es >10 millones de eventos/segundo. En la práctica, esto depende del hardware y la complejidad del procesamiento de cada evento.
 
 ---
@@ -954,23 +953,23 @@ R: El límite teórico es >10 millones de eventos/segundo. En la práctica, esto
 
 **P: ¿Dónde está el archivo de configuración?**
 R: La biblioteca **no lee archivos de configuración**. La configuración se pasa
-en `ChronosRT_config_t` al llamar a `ChronosRT_init()`. Si su aplicación usa un
+en `config_t` al llamar a `init()`. Si su aplicación usa un
 archivo (`.conf`, `.ini`, JSON…), es ella quien lo carga y rellena la estructura.
-La documentación incluye plantillas en `./config/`, `~/.config/chronosrt/` y
-`/etc/chronosrt/` como referencia, no como mecanismo del framework.
+La documentación incluye plantillas en `./config/`, `~/.config/libtuxwarp/` y
+`/etc/libtuxwarp/` como referencia, no como mecanismo del framework.
 
 ---
 
-**P: ¿Puedo cambiar la configuración mientras ChronosRT Master está ejecutándose?**
-R: No. `ChronosRT_config_t` se consume en `ChronosRT_init()`; los cambios
-requieren cerrar (`ChronosRT_shutdown`) y volver a inicializar. Los parámetros de
+**P: ¿Puedo cambiar la configuración mientras libtuxwarp está ejecutándose?**
+R: No. `config_t` se consume en `init()`; los cambios
+requieren cerrar (`shutdown`) y volver a inicializar. Los parámetros de
 red que sí son ajustables en caliente tienen su propia API (por ejemplo
-`ChronosRT_et_master_set_qos`, `set_fec`, `set_tx_mode`).
+`et_master_set_qos`, `set_fec`, `set_tx_mode`).
 
 ---
 
 **P: ¿Qué pasa si no tengo archivo de configuración?**
-R: ChronosRT Master usa valores por defecto que funcionan en la mayoría de sistemas. Los valores por defecto están optimizados para un equilibrio entre rendimiento y uso de recursos.
+R: libtuxwarp usa valores por defecto que funcionan en la mayoría de sistemas. Los valores por defecto están optimizados para un equilibrio entre rendimiento y uso de recursos.
 
 ---
 
@@ -978,9 +977,9 @@ R: ChronosRT Master usa valores por defecto que funcionan en la mayoría de sist
 
 **P: El programa compila pero falla al ejecutar**
 R:
-1. Verifica que tienes las bibliotecas necesarias: `ldd ./build/chronosrt_test`
-2. Verifica permisos de ejecución: `ls -la ./build/chronosrt_test`
-3. Intenta ejecutar con más información: `LD_DEBUG=libs ./build/chronosrt_test`
+1. Verifica que tienes las bibliotecas necesarias: `ldd ./build/test`
+2. Verifica permisos de ejecución: `ls -la ./build/test`
+3. Intenta ejecutar con más información: `LD_DEBUG=libs ./build/test`
 
 ---
 
@@ -988,10 +987,10 @@ R:
 R:
 ```bash
 # Dar permisos de ejecución
-chmod +x ./build/chronosrt_test
+chmod +x ./build/test
 
 # Si el problema es de red, puede necesitar privilegios:
-sudo ./build/chronosrt_bench --mode=throughput
+sudo ./build/bench --mode=throughput
 ```
 
 ---
@@ -1061,7 +1060,7 @@ sudo ./build/chronosrt_bench --mode=throughput
 
 ### 10.1 ¿Qué es el maestro EtherCAT?
 
-ChronosRT Master habla con el bus industrial **EtherCAT** (IEC 61158 / ETG.1000) como **maestro**. La comunicación se realiza directamente sobre Ethernet crudo (sockets `AF_PACKET`, EtherType `0x88A4`), **sin depender de SOEM ni de ningún otro maestro externo**. Esto aporta las cuatro propiedades del proyecto:
+libtuxwarp habla con el bus industrial **EtherCAT** (IEC 61158 / ETG.1000) como **maestro**. La comunicación se realiza directamente sobre Ethernet crudo (sockets `AF_PACKET`, EtherType `0x88A4`), **sin depender de SOEM ni de ningún otro maestro externo**. Esto aporta las cuatro propiedades del proyecto:
 
 | Propiedad | Cómo se consigue |
 |---|---|
@@ -1070,7 +1069,7 @@ ChronosRT Master habla con el bus industrial **EtherCAT** (IEC 61158 / ETG.1000)
 | **Resiliencia** | Validación por contador de trabajo (WKC), detección de esclavas perdidas, reintentos acotados y redundancia de red (doble NIC) |
 | **Ultra rendimiento** | Varios datagramas por trama (bit M), buffers indexados y cero copias superfluas |
 
-> ChronosRT Master ofrece **dos protocolos de red seleccionables**: EtherCAT (este apartado) y
+> libtuxwarp ofrece **dos protocolos de red seleccionables**: EtherCAT (este apartado) y
 > **EtherTux** (apartado 11), pensado para Ethernet comercial estándar. No existen modos
 > "raw" ni "DPDK".
 
@@ -1081,10 +1080,10 @@ ChronosRT Master habla con el bus industrial **EtherCAT** (IEC 61158 / ETG.1000)
 
 ```bash
 # Opción A: ejecutar como root
-sudo ./build/chronosrt_bench
+sudo ./build/bench
 
 # Opción B: conceder solo la capacidad necesaria al binario
-sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
+sudo setcap cap_net_raw,cap_net_admin+ep ./build/bench
 ```
 
 3. **Kernel Linux.** El maestro funciona sobre cualquier kernel moderno (5.15+ y 7.x). No requiere módulos propios.
@@ -1094,12 +1093,12 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
 Antes de abrir el maestro conviene saber qué interfaces existen y cuáles están activas:
 
 ```c
-#include <chronosrt/chronosrt_ethercat.h>
+#include <libtuxwarp/ethercat.h>
 #include <stdio.h>
 
-uint32_t n = ChronosRT_ec_interface_count();
+uint32_t n = ec_interface_count();
 for (uint32_t i = 0; i < n; i++) {
-    const ChronosRT_ec_interface_t* itf = ChronosRT_ec_interface(i);
+    const ec_interface_t* itf = ec_interface(i);
     if (!itf) continue;
     printf("[%u] %-16s MAC %02x:%02x:%02x:%02x:%02x:%02x  %s\n",
            i, itf->name,
@@ -1109,54 +1108,54 @@ for (uint32_t i = 0; i < n; i++) {
 }
 ```
 
-`ChronosRT_ec_interface_index("enp2s0")` devuelve el índice de una interfaz concreta (o `-1`). El maestro se abre sobre la interfaz **activa** (por ejemplo `enp2s0`); una interfaz `DOWN` no servirá.
+`ec_interface_index("enp2s0")` devuelve el índice de una interfaz concreta (o `-1`). El maestro se abre sobre la interfaz **activa** (por ejemplo `enp2s0`); una interfaz `DOWN` no servirá.
 
 ### 10.4 Abrir el maestro e inicializar el bus
 
 La puesta en marcha sigue siempre la misma secuencia: **abrir → escanear → configurar → mapear**.
 
 ```c
-#include <chronosrt/chronosrt_ethercat.h>
+#include <libtuxwarp/ethercat.h>
 #include <stdio.h>
 
 int main(void) {
-    ChronosRT_ec_master_t* m = ChronosRT_ec_master_create();
+    ec_master_t* m = ec_master_create();
     if (!m) { fprintf(stderr, "sin memoria\n"); return 1; }
 
     /* 1. Abrir la interfaz (AF_PACKET, EtherType 0x88A4). */
-    ChronosRT_status_t st = ChronosRT_ec_master_open(m, "enp2s0");
-    if (st != ChronosRT_SUCCESS) {
+    status_t st = ec_master_open(m, "enp2s0");
+    if (st != SUCCESS) {
         fprintf(stderr, "no se pudo abrir enp2s0: %d\n", (int)st);
-        ChronosRT_ec_master_destroy(m);
+        ec_master_destroy(m);
         return 1;
     }
 
     /* 2. Escanear el bus: descubre las esclavas por auto-incremento. */
-    int slaves = ChronosRT_ec_master_scan(m);
+    int slaves = ec_master_scan(m);
     if (slaves <= 0) {
         fprintf(stderr, "no se detectaron esclavas (%d)\n", slaves);
-        ChronosRT_ec_master_close(m);
-        ChronosRT_ec_master_destroy(m);
+        ec_master_close(m);
+        ec_master_destroy(m);
         return 1;
     }
     printf("Esclavas detectadas: %d\n", slaves);
 
     /* 3. Configurar estación, SII/EEPROM y buzón de cada esclava. */
-    if (ChronosRT_ec_master_config_init(m) < 0) {
+    if (ec_master_config_init(m) < 0) {
         fprintf(stderr, "config_init falló\n");
     }
 
     /* 4. Configurar SM/FMMU y construir el mapa de proceso (IOMap). */
-    if (ChronosRT_ec_master_config_map(m) < 0) {
+    if (ec_master_config_map(m) < 0) {
         fprintf(stderr, "config_map falló\n");
     }
 
-    printf("IOMap: %u bytes\n", ChronosRT_ec_master_iomap_size(m));
+    printf("IOMap: %u bytes\n", ec_master_iomap_size(m));
 
     /* ... ciclo de proceso (sección 10.6) ... */
 
-    ChronosRT_ec_master_close(m);
-    ChronosRT_ec_master_destroy(m);
+    ec_master_close(m);
+    ec_master_destroy(m);
     return 0;
 }
 ```
@@ -1164,7 +1163,7 @@ int main(void) {
 Con redundancia de red (NIC primaria + secundaria, para tolerancia a fallos de cable o puerto):
 
 ```c
-ChronosRT_ec_master_open_redundant(m, "enp2s0", "enp3s0");
+ec_master_open_redundant(m, "enp2s0", "enp3s0");
 ```
 
 ### 10.5 Llevar las esclavas a OPERATIONAL
@@ -1173,21 +1172,21 @@ Tras el mapeo, las esclavas están en estado `INIT`. El cambio de estado se hace
 
 ```c
 /* Todas las esclavas a PRE-OP (buzón activo, PDOs aún no). */
-ChronosRT_ec_master_request_all_states(m, ChronosRT_EC_STATE_PREOP, 2000000);
+ec_master_request_all_states(m, EC_STATE_PREOP, 2000000);
 
 /* ... opcional: aquí se configuran los PDOs por CoE (sección 10.8) ... */
 
 /* Todas las esclavas a SAFE-OP (entradas válidas, salidas en estado seguro). */
-ChronosRT_ec_master_request_all_states(m, ChronosRT_EC_STATE_SAFEOP, 2000000);
+ec_master_request_all_states(m, EC_STATE_SAFEOP, 2000000);
 
 /* Todas las esclavas a OP (intercambio de PDO completo). */
-int rc = ChronosRT_ec_master_request_all_states(m, ChronosRT_EC_STATE_OP, 2000000);
+int rc = ec_master_request_all_states(m, EC_STATE_OP, 2000000);
 if (rc < 0) {
     fprintf(stderr, "no se alcanzó OP en todas las esclavas\n");
 }
 ```
 
-Para una esclava concreta, `ChronosRT_ec_master_request_state(m, adp, estado, timeout_us)` solicita el estado y espera a alcanzarlo. `ChronosRT_ec_master_read_state()` lee el estado y el código de error actuales. Si una esclava no alcanza el estado pedido, el sistema **degrada elegantemente** (informa del fallo, no aborta).
+Para una esclava concreta, `ec_master_request_state(m, adp, estado, timeout_us)` solicita el estado y espera a alcanzarlo. `ec_master_read_state()` lee el estado y el código de error actuales. Si una esclava no alcanza el estado pedido, el sistema **degrada elegantemente** (informa del fallo, no aborta).
 
 ### 10.6 Ciclo de datos de proceso (PDO)
 
@@ -1195,8 +1194,8 @@ En OPERATIONAL el intercambio se hace en dos fases con el IOMap:
 
 ```c
 uint32_t cycle_us = 1000;  /* 1 ms */
-const uint8_t* iomap = ChronosRT_ec_master_iomap(m);
-uint32_t       iomap_size = ChronosRT_ec_master_iomap_size(m);
+const uint8_t* iomap = ec_master_iomap(m);
+uint32_t       iomap_size = ec_master_iomap_size(m);
 
 /* Escribir las salidas (RxPDO) en el IOMap. La disposición de cada esclava
    está en slave->o_offset/slave->o_bytes, y las entradas en
@@ -1204,10 +1203,10 @@ uint32_t       iomap_size = ChronosRT_ec_master_iomap_size(m);
 
 while (running) {
     /* 1. Enviar la trama de proceso (LRW) con las salidas. */
-    ChronosRT_ec_master_send_processdata(m);
+    ec_master_send_processdata(m);
 
     /* 2. Recibir la respuesta y validar el contador de trabajo esperado. */
-    int wkc = ChronosRT_ec_master_receive_processdata(m, cycle_us);
+    int wkc = ec_master_receive_processdata(m, cycle_us);
     if (wkc < 0) {
         /* Trama perdida o WKC incorrecto: continuar el bucle sin bloquear. */
         continue;
@@ -1220,7 +1219,7 @@ while (running) {
 }
 ```
 
-El contador de trabajo esperado se calcula como `2 × esclavas_de_salida + 1 × esclavas_de_entrada`. `ChronosRT_ec_master_receive_processdata()` lo compara con el recibido y devuelve fallo si no coincide (indicador de esclava caída o cable roto).
+El contador de trabajo esperado se calcula como `2 × esclavas_de_salida + 1 × esclavas_de_entrada`. `ec_master_receive_processdata()` lo compara con el recibido y devuelve fallo si no coincide (indicador de esclava caída o cable roto).
 
 ### 10.7 Relojes distribuidos (DC)
 
@@ -1228,16 +1227,16 @@ Para sincronización de precisión entre esclavas:
 
 ```c
 /* Mide retardos de propagación y compensa el offset del reloj del bus. */
-ChronosRT_ec_master_config_dc(m);
+ec_master_config_dc(m);
 
 /* Activar SYNC0 con periodo de 1 ms (ciclo_ns, shift_ns). */
-ChronosRT_ec_master_sync0(m, /*index=*/1, /*act=*/true, 1000000, 0);
+ec_master_sync0(m, /*index=*/1, /*act=*/true, 1000000, 0);
 
 /* Tiempo de sistema DC leído del bus (ns desde 2000-01-01). */
-int64_t t = ChronosRT_ec_master_dc_time(m);
+int64_t t = ec_master_dc_time(m);
 ```
 
-`ChronosRT_ec_master_sync01()` permite activar SYNC0 y SYNC1 simultáneamente en una esclava.
+`ec_master_sync01()` permite activar SYNC0 y SYNC1 simultáneamente en una esclava.
 
 ### 10.8 Buzón / CoE (objetos SDO)
 
@@ -1247,12 +1246,12 @@ Lectura y escritura de objetos del diccionario de objetos (CANopen over EtherCAT
 /* SDO upload: leer el objeto 0x1C32:01 (ciclo de sincronización). */
 uint32_t size = sizeof(uint32_t);
 uint32_t val  = 0;
-ChronosRT_status_t st = ChronosRT_ec_master_sdo_read(
+status_t st = ec_master_sdo_read(
         m, /*slave_index=*/1, 0x1C32, 0x01, &val, &size, 100000);
 
 /* SDO download: escribir un objeto. */
 uint16_t newval = 1000;
-ChronosRT_ec_master_sdo_write(m, 1, 0x1C32, 0x01, &newval, sizeof(newval), 100000);
+ec_master_sdo_write(m, 1, 0x1C32, 0x01, &newval, sizeof(newval), 100000);
 ```
 
 Los objetos CoE se leen/escriben **siempre en estado PRE-OP o superior** (el buzón debe estar activo).
@@ -1260,15 +1259,15 @@ Los objetos CoE se leen/escriben **siempre en estado PRE-OP o superior** (el buz
 ### 10.9 Diagnóstico y monitorización
 
 ```c
-uint16_t wkc      = ChronosRT_ec_master_working_counter(m);   /* WKC del último ciclo */
-uint16_t expected = ChronosRT_ec_master_expected_wkc(m);      /* WKC esperado          */
-uint64_t sent     = ChronosRT_ec_master_frames_sent(m);       /* tramas enviadas       */
-uint64_t lost     = ChronosRT_ec_master_frames_lost(m);       /* tramas perdidas       */
+uint16_t wkc      = ec_master_working_counter(m);   /* WKC del último ciclo */
+uint16_t expected = ec_master_expected_wkc(m);      /* WKC esperado          */
+uint64_t sent     = ec_master_frames_sent(m);       /* tramas enviadas       */
+uint64_t lost     = ec_master_frames_lost(m);       /* tramas perdidas       */
 
 /* Estado de cada esclava descubierta. */
-uint32_t n = ChronosRT_ec_master_slave_count(m);
+uint32_t n = ec_master_slave_count(m);
 for (uint32_t i = 0; i < n; i++) {
-    const ChronosRT_ec_slave_t* s = ChronosRT_ec_master_slave(m, i);
+    const ec_slave_t* s = ec_master_slave(m, i);
     if (!s) continue;
     printf("Esclava %u  vendor 0x%08X  AL 0x%02X  lost=%d\n",
            s->position, s->vendor_id, s->al_state, s->is_lost);
@@ -1292,11 +1291,11 @@ cat /sys/class/net/enp2s0/carrier      # debe ser 1
 
 #### Error de permisos al abrir el maestro
 
-`ChronosRT_ec_master_open()` devuelve error si no hay privilegios para crear el socket `AF_PACKET`:
+`ec_master_open()` devuelve error si no hay privilegios para crear el socket `AF_PACKET`:
 
 ```bash
 # Ejecutar con la capacidad adecuada
-sudo setcap cap_net_raw,cap_net_admin+ep ./build/chronosrt_bench
+sudo setcap cap_net_raw,cap_net_admin+ep ./build/bench
 ```
 
 #### El contador de trabajo (WKC) no coincide
@@ -1309,7 +1308,7 @@ Consulta el código de estado AL de la esclava que no llega:
 
 ```c
 uint8_t state; uint16_t code;
-ChronosRT_ec_master_read_state(m, adp, &state, &code);
+ec_master_read_state(m, adp, &state, &code);
 /* `code` (registro 0x0134) describe la causa exacta del error AL. */
 ```
 
@@ -1333,7 +1332,7 @@ EtherTux habla **Ethernet estándar** (EtherType `0x88B5`), sin ASIC ni FPGA ded
 opción cuando el despliegue usa:
 
 - switches y NICs comerciales,
-- SBC heterogéneas (Raspberry Pi, Orange Pi, Radxa, Banana Pi…),
+- SBC heterogéneas (Raspberry Pi, Orange Pi, Radxa),
 - MCUs con controlador Ethernet SPI/QSPI (W5500 / W6100 / W6300),
 - una red **exclusiva** para el lazo de control.
 
@@ -1353,37 +1352,37 @@ QoS, planificador y FEC, el maestro incorpora:
 | **FRM** | Redundancia lógica de flujo y deduplicación por `(nodo, SeqNum)` |
 | **Flow Aggregator** | Agrupa varios flujos en una trama (`FlowCount > 1`) |
 
-Cada módulo se asocia al maestro con `ChronosRT_et_master_attach_*()`. La
+Cada módulo se asocia al maestro con `et_master_attach_*()`. La
 transmisión puede usar llamadas al sistema (`sendmmsg`, hasta 16 tramas) o un
-anillo `PACKET_TX_RING`; selección con `ChronosRT_et_master_set_tx_mode()`.
+anillo `PACKET_TX_RING`; selección con `et_master_set_tx_mode()`.
 
 ### 11.2 Elegir el protocolo
 
 ```bash
 # Variable de entorno leída al arrancar la aplicación
-export CHRONOSRT_PROTOCOL=ethertux
+export PROTOCOL=ethertux
 ```
 
 ```c
-#include <chronosrt/chronosrt_protocol.h>
+#include <libtuxwarp/protocol.h>
 
-ChronosRT_protocol_t p = ChronosRT_protocol_from_env();   /* o from_string("ethertux") */
+protocol_t p = protocol_from_env();   /* o from_string("ethertux") */
 ```
 
 ### 11.3 Puesta en marcha
 
 ```c
-#include <chronosrt/chronosrt_ethertux.h>
+#include <libtuxwarp/ethertux.h>
 
-ChronosRT_et_master_t* m = ChronosRT_et_master_create();
+et_master_t* m = et_master_create();
 
 /* 1 Gbps y superframe de 1 ms; ajusta a tu enlace real */
-if (ChronosRT_et_master_open_ex(m, "enp2s0", 1000000000ull, 1000000u) != ChronosRT_SUCCESS) {
+if (et_master_open_ex(m, "enp2s0", 1000000000ull, 1000000u) != SUCCESS) {
     /* sin CAP_NET_RAW o interfaz caída: revisa 11.7 */
 }
 
 /* Alternativa: detecta la velocidad real del enlace (1G/2.5G/5G/10G) */
-/* ChronosRT_et_master_open_auto(m, "enp2s0"); */
+/* et_master_open_auto(m, "enp2s0"); */
 ```
 
 Permisos (igual que EtherCAT):
@@ -1406,40 +1405,40 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./mi_aplicacion
 Cada envío consulta el control de admisión. Es **obligatorio** atender el resultado:
 
 ```c
-ChronosRT_status_t st = ChronosRT_et_master_send(m, ChronosRT_ET_P0,
-                                                 ChronosRT_ET_TYPE_CONTROL, 1u,
+status_t st = et_master_send(m, ET_P0,
+                                                 ET_TYPE_CONTROL, 1u,
                                                  msg, sizeof(msg));
-if (st == ChronosRT_ERROR_BACKPRESSURE) {
+if (st == ERROR_BACKPRESSURE) {
     /* reduce la tasa del productor; la trama NO se ha perdido */
-} else if (st == ChronosRT_ERROR_DROPPED) {
+} else if (st == ERROR_DROPPED) {
     /* solo puede ocurrir en P5 (best-effort) */
 }
 ```
 
 P0–P4 **nunca se descartan**; P5 sí (drop-tail). Puedes consultar la presión antes de generar
-tráfico con `ChronosRT_et_qos_backpressure()`.
+tráfico con `et_qos_backpressure()`.
 
 ### 11.5 Planificador time-triggered
 
 ```c
-ChronosRT_et_sched_t* s = ChronosRT_et_sched_create(1000000u, 1000000000ull);
+et_sched_t* s = et_sched_create(1000000u, 1000000000ull);
 /* Ventanas por defecto: 100 / 200 / 300 / 400 µs */
-ChronosRT_et_sched_add_slot(s, ChronosRT_ET_P2, /*node=*/3u, /*bytes=*/128u, /*offset=*/120000u);
-ChronosRT_et_master_attach_scheduler(m, s);
+et_sched_add_slot(s, ET_P2, /*node=*/3u, /*bytes=*/128u, /*offset=*/120000u);
+et_master_attach_scheduler(m, s);
 ```
 
 Mientras haya planificador asociado, cada prioridad solo puede transmitir en su ventana (P0 es la
 excepción: es express y puede transmitir siempre). Fuera de ventana el envío devuelve
-`ChronosRT_ERROR_BACKPRESSURE`.
+`ERROR_BACKPRESSURE`.
 
 ### 11.6 FEC Reed-Solomon (recuperación sin retransmisión)
 
 ```c
-ChronosRT_et_master_set_fec(m, ChronosRT_ET_FEC_LIGHT);    /* RS(10,8): 25 % overhead  */
-/* ChronosRT_ET_FEC_ROBUST -> RS(16,8): 100 % de overhead, 8 pérdidas por bloque */
+et_master_set_fec(m, ET_FEC_LIGHT);    /* RS(10,8): 25 % overhead  */
+/* ET_FEC_ROBUST -> RS(16,8): 100 % de overhead, 8 pérdidas por bloque */
 
 const uint8_t* bloques[8] = { d0, d1, d2, d3, d4, d5, d6, d7 };   /* 8 datos */
-ChronosRT_et_master_send_fec_block(m, ChronosRT_ET_P2, 1u, bloques, 8u, len);
+et_master_send_fec_block(m, ET_P2, 1u, bloques, 8u, len);
 ```
 
 El receptor reconstruye los bloques perdidos antes de entregarlos a la aplicación. La FEC no
@@ -1462,15 +1461,15 @@ sudo setcap cap_net_raw,cap_net_admin+ep ./mi_aplicacion
 
 **Pérdidas de paquetes**
 
-Activa FEC (`ChronosRT_ET_FEC_LIGHT` o `ROBUST`) y revisa que el switch no esté aplicando
+Activa FEC (`ET_FEC_LIGHT` o `ROBUST`) y revisa que el switch no esté aplicando
 `storm-control` ni descartes por búfer.
 
 **Jitter alto**
 
 - Dedica la interfaz en exclusiva a EtherTux.
 - Aísla el hilo del ciclo (`isolcpus`, `nohz_full`) y fija afinidad.
-- Comprueba `ChronosRT_hw_caps_for_interface()`: si la NIC soporta PHC/Launch Time, verás
-  `phc = true` y el envío con `ChronosRT_et_master_send_at()` aplicará pacing por hardware.
+- Comprueba `hw_caps_for_interface()`: si la NIC soporta PHC/Launch Time, verás
+  `phc = true` y el envío con `et_master_send_at()` aplicará pacing por hardware.
 
 **Rendimiento por MCU**
 
@@ -1483,21 +1482,21 @@ Activa FEC (`ChronosRT_ET_FEC_LIGHT` o `ROBUST`) y revisa que el switch no esté
 ### 11.8 Diagnóstico
 
 ```c
-ChronosRT_et_master_stats_t st;
-ChronosRT_et_master_stats(m, &st);
+et_master_stats_t st;
+et_master_stats(m, &st);
 /* frames_tx, frames_rx, dropped, backpressure, fec_blocks, frame_errors */
 
-uint32_t n = ChronosRT_et_master_node_count(m);
-ChronosRT_et_node_t node;
+uint32_t n = et_master_node_count(m);
+et_node_t node;
 for (uint32_t i = 0; i < n; i++) {
-    if (ChronosRT_et_master_node(m, i, &node)) {
+    if (et_master_node(m, i, &node)) {
         printf("nodo %u  rtt=%u ns  offset=%lld ns  lost=%d\n",
                node.id, node.rtt_ns, (long long)node.clock_offset_ns, node.lost);
     }
 }
 
 /* Marca caídos los nodos sin heartbeat en 3 superframes y libera sus ranuras */
-ChronosRT_et_master_heartbeat(m, ChronosRT_tx_timestamp_ns());
+et_master_heartbeat(m, tx_timestamp_ns());
 ```
 
 ---
@@ -1505,14 +1504,14 @@ ChronosRT_et_master_heartbeat(m, ChronosRT_tx_timestamp_ns());
 ## Apéndice A: Contacto y Soporte
 
 Para soporte técnico:
-- **Email:** support@chronosrt.example.com
-- **Documentación:** https://docs.chronosrt.example.com
-- **GitHub Issues:** https://github.com/LauOtero/ChronosRT_MASTER/issues
-- **Foro de comunidad:** https://forum.chronosrt.example.com
+- **Email:** support@libtuxwarp.example.com
+- **Documentación:** https://docs.libtuxwarp.example.com
+- **GitHub Issues:** https://github.com/LauOtero/libtuxwarp/issues
+- **Foro de comunidad:** https://forum.libtuxwarp.example.com
 
 ## Apéndice B: Licencia
 
-ChronosRT Master está bajo la **GNU Affero General Public License v3.0
+libtuxwarp está bajo la **GNU Affero General Public License v3.0
 (AGPL-3.0)**. Ver el archivo [LICENSE](../LICENSE) para el texto completo.
 
 ---
@@ -1531,16 +1530,16 @@ make -j$(nproc)
 ctest --test-dir build --output-on-failure
 
 # Ejecutar una suite concreta
-./build/chronosrt_test
+./build/test
 
 # Ejecutar benchmark de latencia
-./chronosrt_bench --mode=latency --duration=30
+./bench --mode=latency --duration=30
 
 # Ejecutar benchmark de throughput
-./chronosrt_bench --mode=throughput --duration=60 --threads=4
+./bench --mode=throughput --duration=60 --threads=4
 
 # Análisis con perf
-perf stat ./chronosrt_bench --mode=latency --duration=30
+perf stat ./bench --mode=latency --duration=30
 ```
 
 ### C.2 Comandos de Diagnóstico
@@ -1572,12 +1571,12 @@ rm -rf build/
 sudo make install
 
 # Desinstalar
-sudo rm -rf /usr/local/lib/libchronosrt.so*
-sudo rm -rf /usr/local/include/chronosrt
+sudo rm -rf /usr/local/lib/liblibtuxwarp.so*
+sudo rm -rf /usr/local/include/libtuxwarp
 
 # Respaldar configuración (plantillas de su aplicación)
-tar -czf chronosrt_backup_$(date +%Y%m%d).tar.gz \
-    /etc/chronosrt ~/.config/chronosrt
+tar -czf backup_$(date +%Y%m%d).tar.gz \
+    /etc/libtuxwarp ~/.config/libtuxwarp
 ```
 
 ---
@@ -1587,46 +1586,46 @@ tar -czf chronosrt_backup_$(date +%Y%m%d).tar.gz \
 ### D.1 Aplicación Mínima Funcional
 
 ```c
-#include <chronosrt/chronosrt.h>
+#include <libtuxwarp/libtuxwarp.h>
 #include <stdio.h>
 #include <unistd.h>
 
 int main(void) {
     // 1. Configurar
-    ChronosRT_config_t config = {0};
+    config_t config = {0};
     config.event_pool_size = 8192;
     config.use_simd = true;
     
     // 2. Inicializar
-    ChronosRT_handle_t handle;
-    if (ChronosRT_init(&handle, &config) != ChronosRT_SUCCESS) {
+    handle_t handle;
+    if (init(&handle, &config) != SUCCESS) {
         fprintf(stderr, "Init failed\n");
         return 1;
     }
     
-    printf("ChronosRT Master initialized successfully!\n");
+    printf("libtuxwarp initialized successfully!\n");
     
     // 3. Publicar eventos
     for (int i = 0; i < 100; i++) {
         uint32_t data = i;
-        ChronosRT_event_publish(handle, &data, sizeof(data));
+        event_publish(handle, &data, sizeof(data));
     }
     printf("Published 100 events\n");
     
     // 4. Suscribirse a eventos
-    ChronosRT_event_t event;
+    event_t event;
     int received = 0;
     while (received < 100) {
-        if (ChronosRT_event_subscribe(handle, &event, 1000) == 
-            ChronosRT_SUCCESS) {
+        if (event_subscribe(handle, &event, 1000) == 
+            SUCCESS) {
             received++;
         }
     }
     printf("Received %d events\n", received);
     
     // 5. Shutdown
-    ChronosRT_shutdown(handle);
-    printf("ChronosRT Master shutdown complete\n");
+    tuxwarp_shutdown(handle);
+    printf("libtuxwarp shutdown complete\n");
     
     return 0;
 }
@@ -1636,19 +1635,19 @@ int main(void) {
 ```bash
 gcc -o ejemplo_minimo ejemplo_minimo.c \
     -I/usr/local/include \
-    -L/usr/local/lib -lchronosrt -lpthread -lm -ldl
+    -L/usr/local/lib -llibtuxwarp -lpthread -lm -ldl
 ```
 
 ### D.2 Aplicación con Benchmarking
 
 ```c
-#include <chronosrt/chronosrt.h>
+#include <libtuxwarp/libtuxwarp.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 int main(int argc, char* argv[]) {
     // Configuración optimizada para benchmark
-    ChronosRT_config_t config = {0};
+    config_t config = {0};
     config.event_pool_size = 131072;  // 128K eventos
     config.batch_size = 512;
     config.use_simd = true;
@@ -1659,8 +1658,8 @@ int main(int argc, char* argv[]) {
     config.num_cpus = 2;
     
     // Inicializar
-    ChronosRT_handle_t handle;
-    if (ChronosRT_init(&handle, &config) != ChronosRT_SUCCESS) {
+    handle_t handle;
+    if (init(&handle, &config) != SUCCESS) {
         fprintf(stderr, "Failed to initialize\n");
         return 1;
     }
@@ -1668,21 +1667,21 @@ int main(int argc, char* argv[]) {
     printf("Running latency benchmark...\n");
     
     // Ejecutar benchmark
-    ChronosRT_metrics_t metrics;
-    if (ChronosRT_benchmark_run(handle, 
-                                        ChronosRT_MODE_LATENCY,
+    metrics_t metrics;
+    if (benchmark_run(handle, 
+                                        MODE_LATENCY,
                                         30,  // 30 segundos
-                                        &metrics) != ChronosRT_SUCCESS) {
+                                        &metrics) != SUCCESS) {
         fprintf(stderr, "Benchmark failed\n");
-        ChronosRT_shutdown(handle);
+        tuxwarp_shutdown(handle);
         return 1;
     }
     
     // Reportar resultados
-    ChronosRT_metrics_report(&metrics);
+    metrics_report(&metrics);
     
     // Evaluar resultado (el WCET manda sobre sigma)
-    if (metrics.wcet_ns > CHRONOSRT_LATENCY_TARGET_NS) {
+    if (metrics.wcet_ns > LATENCY_TARGET_NS) {
         printf("✗ WCET > 10 μs: %lu picos de %lu eventos\n",
                metrics.latency_spikes, metrics.total_events);
     } else if (metrics.stddev_ns < 1000) {
@@ -1693,7 +1692,7 @@ int main(int argc, char* argv[]) {
         printf("✗ NEEDS OPTIMIZATION: Jitter >= 5 μs\n");
     }
     
-    ChronosRT_shutdown(handle);
+    tuxwarp_shutdown(handle);
     return 0;
 }
 ```
@@ -1701,7 +1700,7 @@ int main(int argc, char* argv[]) {
 ### D.3 Aplicación Multi-thread
 
 ```c
-#include <chronosrt/chronosrt.h>
+#include <libtuxwarp/libtuxwarp.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -1709,7 +1708,7 @@ int main(int argc, char* argv[]) {
 #define NUM_PRODUCERS 2
 #define NUM_CONSUMERS 2
 
-ChronosRT_handle_t g_handle;
+handle_t g_handle;
 volatile int g_running = 1;
 
 void* producer_thread(void* arg) {
@@ -1718,8 +1717,8 @@ void* producer_thread(void* arg) {
     
     while (g_running) {
         uint64_t data = (id << 48) | count;
-        if (ChronosRT_event_publish(g_handle, &data, sizeof(data)) == 
-            ChronosRT_SUCCESS) {
+        if (event_publish(g_handle, &data, sizeof(data)) == 
+            SUCCESS) {
             count++;
         }
         usleep(100);  // 100 μs entre eventos
@@ -1732,11 +1731,11 @@ void* producer_thread(void* arg) {
 void* consumer_thread(void* arg) {
     int id = *(int*)arg;
     uint64_t count = 0;
-    ChronosRT_event_t event;
+    event_t event;
     
     while (g_running) {
-        if (ChronosRT_event_subscribe(g_handle, &event, 1000) == 
-            ChronosRT_SUCCESS) {
+        if (event_subscribe(g_handle, &event, 1000) == 
+            SUCCESS) {
             count++;
             // Procesar evento...
         }
@@ -1752,10 +1751,10 @@ int main(void) {
     int producer_ids[NUM_PRODUCERS];
     int consumer_ids[NUM_CONSUMERS];
     
-    // Inicializar ChronosRT Master
-    ChronosRT_config_t config = {0};
+    // Inicializar libtuxwarp
+    config_t config = {0};
     config.event_pool_size = 65536;
-    ChronosRT_init(&g_handle, &config);
+    init(&g_handle, &config);
     
     // Crear threads productores
     for (int i = 0; i < NUM_PRODUCERS; i++) {
@@ -1781,7 +1780,7 @@ int main(void) {
         pthread_join(consumers[i], NULL);
     }
     
-    ChronosRT_shutdown(g_handle);
+    tuxwarp_shutdown(g_handle);
     return 0;
 }
 ```
@@ -1802,7 +1801,7 @@ int main(void) {
 sudo apt install gcc-multilib
 
 # O deshabilitar SIMD
-cmake .. -DCHRONOSRT_USE_SIMD=OFF
+cmake .. -DUSE_SIMD=OFF
 ```
 
 **Error: "arm_neon.h: No such file or directory"**
@@ -1827,7 +1826,7 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/aarch64-linux-gnu.cmake
 **Soluciones:**
 ```bash
 # Reducir pool size
-export ChronosRT_EVENT_POOL_SIZE=16384
+export EVENT_POOL_SIZE=16384
 
 # Verificar memoria
 free -h
@@ -1843,10 +1842,10 @@ ulimit -v unlimited
 **Soluciones:**
 ```bash
 # Ejecutar como root
-sudo ./chronosrt_bench
+sudo ./bench
 
 # O configurar capabilities
-sudo setcap cap_sys_nice=eip ./chronosrt_bench
+sudo setcap cap_sys_nice=eip ./bench
 
 # O ajustar limits
 echo "@user - rtprio 99" >> /etc/security/limits.conf

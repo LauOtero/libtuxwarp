@@ -17,11 +17,11 @@
  *   et_socket.c   — socket AF_PACKET (0x88B5), pacing SO_TXTIME y recepción.
  *   et_master.c   — ciclo de vida, envío/recepción, nodos y heartbeat.
  */
-#ifndef CHRONOSRT_ET_INTERNAL_H
-#define CHRONOSRT_ET_INTERNAL_H
+#ifndef ET_INTERNAL_H
+#define ET_INTERNAL_H
 
-#include "chronosrt_ethertux.h"
-#include "chronosrt_abi.h"
+#include "ethertux.h"
+#include "abi.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -98,35 +98,35 @@ typedef struct {
     uint64_t last_ns;     /* instante del último reabastecimiento            */
 } et_bucket_t;
 
-struct ChronosRT_et_qos {
-    ChronosRT_et_qos_config_t cfg;
-    et_bucket_t               tb[ChronosRT_ET_PRIORITIES];
-    uint8_t                   eff[ChronosRT_ET_PRIORITIES];  /* LAPM         */
+struct et_qos {
+    et_qos_config_t cfg;
+    et_bucket_t               tb[ET_PRIORITIES];
+    uint8_t                   eff[ET_PRIORITIES];  /* LAPM         */
     bool                      lapm_active;
     uint64_t                  last_refill_ns;    /* lazy refill: último refill completo */
     uint64_t                  last_lazy_ns;      /* último refill lazy individual */
     /* Coeficientes fijos (Q32) para no dividir en el camino caliente. */
-    uint64_t                  rate_q32[ChronosRT_ET_PRIORITIES];      /* B/ns × 2^32 */
-    uint64_t                  inv_burst_q32[ChronosRT_ET_PRIORITIES]; /* 100/burst × 2^32 */
-    ChronosRT_et_qos_stats_t  stats;
+    uint64_t                  rate_q32[ET_PRIORITIES];      /* B/ns × 2^32 */
+    uint64_t                  inv_burst_q32[ET_PRIORITIES]; /* 100/burst × 2^32 */
+    et_qos_stats_t  stats;
 };
 
 /* ------------------------------------------------------------------ */
 /* Planificador                                                        */
 /* ------------------------------------------------------------------ */
-struct ChronosRT_et_sched {
+struct et_sched {
     uint32_t           cycle_ns;
     uint64_t           link_bps;
     uint64_t           cycle_recip;   /* magia para `now % cycle_ns` sin idiv */
     uint32_t           window_ns[ET_WINDOW_COUNT];
-    ChronosRT_et_slot_t slots[ET_MAX_SLOTS];
+    et_slot_t slots[ET_MAX_SLOTS];
     uint32_t           slot_count;
 };
 
 /* ------------------------------------------------------------------ */
 /* FEC                                                                 */
 /* ------------------------------------------------------------------ */
-struct ChronosRT_et_fec {
+struct et_fec {
     uint8_t k;
     uint8_t n;
 };
@@ -134,48 +134,60 @@ struct ChronosRT_et_fec {
 /* ------------------------------------------------------------------ */
 /* Maestro                                                             */
 /* ------------------------------------------------------------------ */
-struct ChronosRT_et_master {
+struct et_master {
     et_port_t port;
     bool      is_open;
 
     uint64_t  link_bps;
     uint32_t  cycle_ns;
 
-    ChronosRT_et_qos_t*   qos;    /* propio                              */
-    ChronosRT_et_fec_t*   fec;    /* propio; NULL = sin FEC              */
-    ChronosRT_et_sched_t* sched;  /* NO propio                           */
+    et_qos_t*   qos;    /* propio                              */
+    et_fec_t*   fec;    /* propio; NULL = sin FEC              */
+    et_sched_t* sched;  /* NO propio                           */
 
     /* Módulos v0.1.0 asociados (NO propios; NULL = no integrado). */
-    ChronosRT_et_topology_t* topo;
-    ChronosRT_et_sync_t*     sync;
-    ChronosRT_et_esm_t*      esm;
-    ChronosRT_et_mbx_t*      mbx;
-    ChronosRT_et_frm_t*      frm;
+    et_topology_t* topo;
+    et_sync_t*     sync;
+    et_esm_t*      esm;
+    et_mbx_t*      mbx;
+    et_frm_t*      frm;
 
-    ChronosRT_et_node_t nodes[ChronosRT_ET_MAX_NODES];
+    et_node_t nodes[ET_MAX_NODES];
     uint32_t            node_count;
     uint8_t             node_hash[ET_NODE_HASH_SLOTS];  /* índice+1, 0 = vacío */
 
     /* ID local determinista (Nivel 2): NULL = esquema desactivado. */
-    ChronosRT_et_aalid_t* aalid;
-    uint16_t              local_id;      /* ChronosRT_ET_LOCAL_ID_NONE si no hay */
+    et_aalid_t* aalid;
+    uint16_t              local_id;      /* ET_LOCAL_ID_NONE si no hay */
 
-    uint32_t seq[ChronosRT_ET_MAX_FLOWS + 1u];
+    uint32_t seq[ET_MAX_FLOWS + 1u];
     uint16_t block_seq;
     uint16_t last_wkc;
 
-    uint8_t  tx_frame[ChronosRT_ET_MAX_FRAME];
-    uint8_t  rx_frame[ChronosRT_ET_MAX_FRAME];
-    uint8_t  aux[ChronosRT_ET_MAX_PAYLOAD];   /* cargas agregadas / mailbox */
-    uint8_t  fec_parity[ChronosRT_ET_MAX_PAYLOAD * (ChronosRT_RS_MAX_N - 1)]; /* buffer FEC pre-asignado */
+    uint8_t  tx_frame[ET_MAX_FRAME];
+    uint8_t  rx_frame[ET_MAX_FRAME];
+    uint8_t  aux[ET_MAX_PAYLOAD];   /* cargas agregadas / mailbox */
+    uint8_t  fec_parity[ET_MAX_PAYLOAD * (RS_MAX_N - 1)]; /* buffer FEC pre-asignado */
 
-    ChronosRT_et_master_stats_t stats;
+    et_master_stats_t stats;
 };
 
+/* ------------------------------------------------------------------
+/* Esclavo                                                             */
 /* ------------------------------------------------------------------ */
+struct et_slave {
+    et_port_t    port;
+    bool         is_open;
+
+    uint64_t     link_bps;
+    et_slave_stats_t stats;
+    et_state_t   esm_state;
+};
+
+/* ------------------------------------------------------------------
 /* et_socket.c                                                         */
 /* ------------------------------------------------------------------ */
-ChronosRT_status_t et_socket_open(et_port_t* port, const char* ifname);
+status_t et_socket_open(et_port_t* port, const char* ifname);
 void     et_socket_close(et_port_t* port);
 int      et_socket_send(et_port_t* port, const uint8_t* frame, uint32_t len);
 int      et_socket_send_iov(et_port_t* port, const void* hdr, uint32_t hdr_len,
@@ -208,7 +220,7 @@ void     et_socket_tx_cancel(et_port_t* port);
 /* ------------------------------------------------------------------ */
 
 /** Registra/refresca el nodo identificado por su MAC. Devuelve su índice. */
-int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
+int et_master_touch_node(et_master_t* master, const uint8_t mac[6],
                          uint64_t now_ns);
 
-#endif /* CHRONOSRT_ET_INTERNAL_H */
+#endif /* ET_INTERNAL_H */

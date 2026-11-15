@@ -2,7 +2,7 @@
  * transport_ethercat.c — EtherCAT Transport Adapter
  *
  * Implements tuxrt_transport_vtable_t for deterministic real-time
- * communication via EtherCAT (EtherType 0x88A4) using the ChronosRT
+ * communication via EtherCAT (EtherType 0x88A4) using the libtuxwarp
  * EtherCAT master backend.
  *
  * This transport provides ultra-low latency, deterministic operation with:
@@ -11,11 +11,10 @@
  * - PDO mapping for process data
  */
 
-#define _POSIX_C_SOURCE 200809L
-#define _GNU_SOURCE
+/* No comment - General transport */
 
-#include "chronosrt_transport.h"
-#include "chronosrt_ethercat.h"
+#include "transport.h"
+#include "ethercat.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +25,7 @@
 
 /* Transport implementation state */
 typedef struct {
-    ChronosRT_ec_master_t* master;
+    ec_master_t* master;
     char ifname[32];
     pthread_mutex_t mutex;
     bool configured;
@@ -53,7 +52,7 @@ static tuxrt_err_t ethercat_open(tuxrt_transport_adapter_t* adapter) {
     }
 
     /* Create EtherCAT master */
-    impl->master = ChronosRT_ec_master_create();
+    impl->master = ec_master_create();
     if (!impl->master) {
         pthread_mutex_destroy(&impl->mutex);
         free(impl);
@@ -61,9 +60,9 @@ static tuxrt_err_t ethercat_open(tuxrt_transport_adapter_t* adapter) {
     }
 
     /* Open interface */
-    ChronosRT_status_t st = ChronosRT_ec_master_open(impl->master, impl->ifname);
-    if (st != ChronosRT_SUCCESS) {
-        ChronosRT_ec_master_destroy(impl->master);
+    status_t st = ec_master_open(impl->master, impl->ifname);
+    if (st != SUCCESS) {
+        ec_master_destroy(impl->master);
         pthread_mutex_destroy(&impl->mutex);
         free(impl);
         return TUXRT_ERR_IO;
@@ -96,8 +95,8 @@ static tuxrt_err_t ethercat_close(tuxrt_transport_adapter_t* adapter) {
     pthread_mutex_lock(&impl->mutex);
 
     if (impl->master) {
-        ChronosRT_ec_master_close(impl->master);
-        ChronosRT_ec_master_destroy(impl->master);
+        ec_master_close(impl->master);
+        ec_master_destroy(impl->master);
     }
     impl->configured = false;
 
@@ -128,7 +127,7 @@ static tuxrt_err_t ethercat_send(tuxrt_transport_adapter_t* adapter,
     }
 
     /* Send process data (PDO) via EtherCAT */
-    int ret = ChronosRT_ec_master_send_processdata(impl->master);
+    int ret = ec_master_send_processdata(impl->master);
     if (ret < 0) {
         pthread_mutex_unlock(&impl->mutex);
         tuxrt_sirc_update_health_failure(adapter);
@@ -170,7 +169,7 @@ static tuxrt_err_t ethercat_recv(tuxrt_transport_adapter_t* adapter,
     }
 
     /* Receive process data */
-    int ret = ChronosRT_ec_master_receive_processdata(impl->master, timeout_us);
+    int ret = ec_master_receive_processdata(impl->master, timeout_us);
     if (ret < 0) {
         pthread_mutex_unlock(&impl->mutex);
         *len = 0;
@@ -179,8 +178,8 @@ static tuxrt_err_t ethercat_recv(tuxrt_transport_adapter_t* adapter,
     }
 
     /* Get the received data length from the master's IOMap */
-    const uint8_t* iomap = ChronosRT_ec_master_iomap(impl->master);
-    uint32_t iomap_size = ChronosRT_ec_master_iomap_size(impl->master);
+    const uint8_t* iomap = ec_master_iomap(impl->master);
+    uint32_t iomap_size = ec_master_iomap_size(impl->master);
     if (iomap && iomap_size > 0 && *len >= iomap_size) {
         memcpy(buf, iomap, iomap_size);
         *len = (size_t)iomap_size;
@@ -209,7 +208,7 @@ static tuxrt_err_t ethercat_flush(tuxrt_transport_adapter_t* adapter) {
     }
 
     /* Force process data update */
-    (void)ChronosRT_ec_master_send_processdata(impl->master);
+    (void)ec_master_send_processdata(impl->master);
 
     pthread_mutex_unlock(&impl->mutex);
     return TUXRT_OK;
@@ -251,17 +250,17 @@ static tuxrt_err_t ethercat_activate(tuxrt_transport_adapter_t* adapter) {
 
     /* Re-open if needed */
     if (!impl->master) {
-        impl->master = ChronosRT_ec_master_create();
+        impl->master = ec_master_create();
         if (!impl->master) {
             pthread_mutex_unlock(&impl->mutex);
             return TUXRT_ERR_NOMEM;
         }
     }
 
-    ChronosRT_status_t st = ChronosRT_ec_master_open(impl->master, impl->ifname);
-    if (st != ChronosRT_SUCCESS) {
+    status_t st = ec_master_open(impl->master, impl->ifname);
+    if (st != SUCCESS) {
         if (impl->master) {
-            ChronosRT_ec_master_destroy(impl->master);
+            ec_master_destroy(impl->master);
             impl->master = NULL;
         }
         pthread_mutex_unlock(&impl->mutex);
@@ -290,8 +289,8 @@ static tuxrt_err_t ethercat_deactivate(tuxrt_transport_adapter_t* adapter) {
     adapter->active = false;
 
     if (impl->master) {
-        ChronosRT_ec_master_close(impl->master);
-        ChronosRT_ec_master_destroy(impl->master);
+        ec_master_close(impl->master);
+        ec_master_destroy(impl->master);
         impl->master = NULL;
     }
     impl->configured = false;
@@ -302,7 +301,7 @@ static tuxrt_err_t ethercat_deactivate(tuxrt_transport_adapter_t* adapter) {
 }
 
 /* Export the vtable for EtherCAT transport (EtherType 0x88A4) */
-CHRONOSRT_API const tuxrt_transport_vtable_t tuxrt_transport_ethercat_vtable = {
+API const tuxrt_transport_vtable_t tuxrt_transport_ethercat_vtable = {
     .abi_version = 1,
     .open = ethercat_open,
     .close = ethercat_close,

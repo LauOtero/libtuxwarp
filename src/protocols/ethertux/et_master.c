@@ -23,7 +23,7 @@
 /* Nodos                                                               */
 /* ------------------------------------------------------------------ */
 
-int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
+int et_master_touch_node(et_master_t* master, const uint8_t mac[6],
                          uint64_t now_ns) {
     if (master == NULL || mac == NULL) {
         return -1;
@@ -33,7 +33,7 @@ int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
      * Índice hash {MAC -> nodo} con sondeo lineal acotado: sustituye el barrido
      * de hasta 64 nodos por trama (≈100–200 ns) por 1–2 comparaciones.
      */
-    const uint32_t h0 = (uint32_t)ChronosRT_et_aalid_candidate(mac) & (ET_NODE_HASH_SLOTS - 1u);
+    const uint32_t h0 = (uint32_t)et_aalid_candidate(mac) & (ET_NODE_HASH_SLOTS - 1u);
     int32_t free_slot = -1;
 
     for (uint32_t p = 0; p < ET_NODE_HASH_PROBES; p++) {
@@ -45,7 +45,7 @@ int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
             }
             break;
         }
-        ChronosRT_et_node_t* n = &master->nodes[slot - 1u];
+        et_node_t* n = &master->nodes[slot - 1u];
         if (memcmp(n->mac, mac, 6u) == 0) {
             n->last_seen_ns = (int64_t)now_ns;
             n->missed_cycles = 0u;
@@ -54,7 +54,7 @@ int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
         }
     }
 
-    if (master->node_count >= ChronosRT_ET_MAX_NODES) {
+    if (master->node_count >= ET_MAX_NODES) {
         return -1;
     }
     if (free_slot < 0) {
@@ -70,7 +70,7 @@ int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
         }
     }
 
-    ChronosRT_et_node_t* n = &master->nodes[master->node_count];
+    et_node_t* n = &master->nodes[master->node_count];
     memset(n, 0, sizeof(*n));
     memcpy(n->mac, mac, 6u);
     n->id = (uint16_t)(master->node_count + 1u);
@@ -84,17 +84,17 @@ int et_master_touch_node(ChronosRT_et_master_t* master, const uint8_t mac[6],
 /* Ciclo de vida                                                       */
 /* ------------------------------------------------------------------ */
 
-ChronosRT_et_master_t* ChronosRT_et_master_create(void) {
-    ChronosRT_et_master_t* m = (ChronosRT_et_master_t*)calloc(1u, sizeof(*m));
+et_master_t* et_master_create(void) {
+    et_master_t* m = (et_master_t*)calloc(1u, sizeof(*m));
     if (m == NULL) {
         return NULL;
     }
     m->port.fd = -1;
     m->link_bps = 1000000000ull;
     m->cycle_ns = 1000000u;
-    m->local_id = ChronosRT_ET_LOCAL_ID_NONE;
+    m->local_id = ET_LOCAL_ID_NONE;
 
-    m->qos = ChronosRT_et_qos_create();
+    m->qos = et_qos_create();
     if (m->qos == NULL) {
         free(m);
         return NULL;
@@ -102,30 +102,30 @@ ChronosRT_et_master_t* ChronosRT_et_master_create(void) {
     return m;
 }
 
-void ChronosRT_et_master_destroy(ChronosRT_et_master_t* master) {
+void et_master_destroy(et_master_t* master) {
     if (master == NULL) {
         return;
     }
-    ChronosRT_et_master_close(master);
-    ChronosRT_et_aalid_destroy(master->aalid);
-    ChronosRT_et_qos_destroy(master->qos);
-    ChronosRT_et_fec_destroy(master->fec);
+    et_master_close(master);
+    et_aalid_destroy(master->aalid);
+    et_qos_destroy(master->qos);
+    et_fec_destroy(master->fec);
     free(master);
 }
 
-ChronosRT_status_t ChronosRT_et_master_open_ex(ChronosRT_et_master_t* master,
+status_t et_master_open_ex(et_master_t* master,
                                                const char* ifname,
                                                uint64_t link_bps,
                                                uint32_t cycle_ns) {
     if (master == NULL || ifname == NULL || ifname[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (master->is_open) {
-        return ChronosRT_ERROR_STATE;
+        return ERROR_STATE;
     }
 
-    ChronosRT_status_t st = et_socket_open(&master->port, ifname);
-    if (st != ChronosRT_SUCCESS) {
+    status_t st = et_socket_open(&master->port, ifname);
+    if (st != SUCCESS) {
         return st;
     }
     /* AUTO: se intenta el anillo de transmisión; si el kernel no lo permite,
@@ -136,67 +136,67 @@ ChronosRT_status_t ChronosRT_et_master_open_ex(ChronosRT_et_master_t* master,
     master->cycle_ns = (cycle_ns != 0u) ? cycle_ns : 1000000u;
 
     /* Si ya se fijó un ID local antes de abrir, la MAC de origen es su LAA. */
-    if (master->local_id != ChronosRT_ET_LOCAL_ID_NONE) {
-        (void)ChronosRT_et_aalid_mac(master->local_id, master->port.mac);
+    if (master->local_id != ET_LOCAL_ID_NONE) {
+        (void)et_aalid_mac(master->local_id, master->port.mac);
     }
 
     master->is_open = true;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
 /* ------------------------------------------------------------------ */
 /* ID local determinista                                               */
 /* ------------------------------------------------------------------ */
 
-ChronosRT_status_t ChronosRT_et_master_enable_local_ids(ChronosRT_et_master_t* master,
-                                                        const ChronosRT_et_aalid_config_t* cfg) {
+status_t et_master_enable_local_ids(et_master_t* master,
+                                                        const et_aalid_config_t* cfg) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (master->aalid != NULL) {
-        return ChronosRT_SUCCESS;
+        return SUCCESS;
     }
-    master->aalid = ChronosRT_et_aalid_create(cfg);
-    return (master->aalid != NULL) ? ChronosRT_SUCCESS : ChronosRT_ERROR_MEMORY;
+    master->aalid = et_aalid_create(cfg);
+    return (master->aalid != NULL) ? SUCCESS : ERROR_MEMORY;
 }
 
-ChronosRT_status_t ChronosRT_et_master_set_local_id(ChronosRT_et_master_t* master, uint16_t id) {
+status_t et_master_set_local_id(et_master_t* master, uint16_t id) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->local_id = id;
-    if (id != ChronosRT_ET_LOCAL_ID_NONE) {
-        (void)ChronosRT_et_aalid_mac(id, master->port.mac);
+    if (id != ET_LOCAL_ID_NONE) {
+        (void)et_aalid_mac(id, master->port.mac);
     }
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-uint16_t ChronosRT_et_master_local_id(const ChronosRT_et_master_t* master) {
-    return (master != NULL) ? master->local_id : ChronosRT_ET_LOCAL_ID_NONE;
+uint16_t et_master_local_id(const et_master_t* master) {
+    return (master != NULL) ? master->local_id : ET_LOCAL_ID_NONE;
 }
 
-ChronosRT_et_aalid_t* ChronosRT_et_master_aalid(ChronosRT_et_master_t* master) {
+et_aalid_t* et_master_aalid(et_master_t* master) {
     return (master != NULL) ? master->aalid : NULL;
 }
 
-ChronosRT_status_t ChronosRT_et_master_admit_node(ChronosRT_et_master_t* master,
+status_t et_master_admit_node(et_master_t* master,
                                                   const uint8_t mac[6], uint32_t nonce,
                                                   uint64_t now_ms, uint16_t* out_id,
-                                                  ChronosRT_et_aalid_result_t* out_result) {
+                                                  et_aalid_result_t* out_result) {
     if (master == NULL || master->aalid == NULL) {
-        return ChronosRT_ERROR_STATE;
+        return ERROR_STATE;
     }
-    return ChronosRT_et_aalid_admit(master->aalid, mac, nonce, now_ms, out_id, out_result);
+    return et_aalid_admit(master->aalid, mac, nonce, now_ms, out_id, out_result);
 }
 
-uint32_t ChronosRT_et_master_expire_local_ids(ChronosRT_et_master_t* master, uint64_t now_ms) {
+uint32_t et_master_expire_local_ids(et_master_t* master, uint64_t now_ms) {
     if (master == NULL || master->aalid == NULL) {
         return 0u;
     }
-    return ChronosRT_et_aalid_expire(master->aalid, now_ms);
+    return et_aalid_expire(master->aalid, now_ms);
 }
 
-bool ChronosRT_et_master_accepts_destination(const ChronosRT_et_master_t* master,
+bool et_master_accepts_destination(const et_master_t* master,
                                              const uint8_t mac[6]) {
     if (master == NULL || mac == NULL) {
         return false;
@@ -205,49 +205,49 @@ bool ChronosRT_et_master_accepts_destination(const ChronosRT_et_master_t* master
     if ((mac[0] & 0x01u) != 0u) {
         return true;
     }
-    if (master->local_id == ChronosRT_ET_LOCAL_ID_NONE) {
+    if (master->local_id == ET_LOCAL_ID_NONE) {
         return true;   /* sin ID local no se filtra por destino */
     }
     uint8_t self[6];
-    (void)ChronosRT_et_aalid_mac(master->local_id, self);
+    (void)et_aalid_mac(master->local_id, self);
     return memcmp(mac, self, 6u) == 0;
 }
 
-ChronosRT_status_t ChronosRT_et_master_set_tx_mode(ChronosRT_et_master_t* master,
-                                                   ChronosRT_et_tx_mode_t mode) {
+status_t et_master_set_tx_mode(et_master_t* master,
+                                                   et_tx_mode_t mode) {
     if (master == NULL || !master->is_open) {
-        return ChronosRT_ERROR_STATE;
+        return ERROR_STATE;
     }
     switch (mode) {
-        case ChronosRT_ET_TX_SYSCALL:
+        case ET_TX_SYSCALL:
             et_socket_tx_ring_disable(&master->port);
-            return ChronosRT_SUCCESS;
-        case ChronosRT_ET_TX_AUTO:
+            return SUCCESS;
+        case ET_TX_AUTO:
             if (!et_socket_tx_ring_active(&master->port)) {
                 (void)et_socket_tx_ring_enable(&master->port, 64u);
             }
-            return ChronosRT_SUCCESS;
-        case ChronosRT_ET_TX_RING:
+            return SUCCESS;
+        case ET_TX_RING:
             if (et_socket_tx_ring_active(&master->port)) {
-                return ChronosRT_SUCCESS;
+                return SUCCESS;
             }
             return et_socket_tx_ring_enable(&master->port, 64u)
-                   ? ChronosRT_SUCCESS : ChronosRT_ERROR_NOTSUP;
+                   ? SUCCESS : ERROR_NOTSUP;
         default:
-            return ChronosRT_ERROR_INVALID;
+            return ERROR_INVALID;
     }
 }
 
-bool ChronosRT_et_master_tx_ring_active(const ChronosRT_et_master_t* master) {
+bool et_master_tx_ring_active(const et_master_t* master) {
     return (master != NULL) && et_socket_tx_ring_active(&master->port);
 }
 
-ChronosRT_status_t ChronosRT_et_master_open(ChronosRT_et_master_t* master,
+status_t et_master_open(et_master_t* master,
                                             const char* ifname) {
-    return ChronosRT_et_master_open_ex(master, ifname, 0u, 0u);
+    return et_master_open_ex(master, ifname, 0u, 0u);
 }
 
-void ChronosRT_et_master_close(ChronosRT_et_master_t* master) {
+void et_master_close(et_master_t* master) {
     if (master == NULL) {
         return;
     }
@@ -255,95 +255,95 @@ void ChronosRT_et_master_close(ChronosRT_et_master_t* master) {
     master->is_open = false;
 }
 
-bool ChronosRT_et_master_is_open(const ChronosRT_et_master_t* master) {
+bool et_master_is_open(const et_master_t* master) {
     return (master != NULL) && master->is_open;
 }
 
-const char* ChronosRT_et_master_interface(const ChronosRT_et_master_t* master) {
+const char* et_master_interface(const et_master_t* master) {
     if (master == NULL || !master->is_open) {
         return NULL;
     }
     return master->port.ifname;
 }
 
-ChronosRT_status_t ChronosRT_et_master_set_qos(ChronosRT_et_master_t* master,
-                                               const ChronosRT_et_qos_config_t* cfg) {
+status_t et_master_set_qos(et_master_t* master,
+                                               const et_qos_config_t* cfg) {
     if (master == NULL || cfg == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
-    return ChronosRT_et_qos_configure(master->qos, cfg);
+    return et_qos_configure(master->qos, cfg);
 }
 
-ChronosRT_status_t ChronosRT_et_master_set_fec(ChronosRT_et_master_t* master,
-                                               ChronosRT_et_fec_mode_t mode) {
+status_t et_master_set_fec(et_master_t* master,
+                                               et_fec_mode_t mode) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
-    ChronosRT_et_fec_destroy(master->fec);
+    et_fec_destroy(master->fec);
     master->fec = NULL;
 
-    if (mode == ChronosRT_ET_FEC_OFF) {
-        return ChronosRT_SUCCESS;
+    if (mode == ET_FEC_OFF) {
+        return SUCCESS;
     }
-    master->fec = ChronosRT_et_fec_create_mode(mode);
-    return (master->fec != NULL) ? ChronosRT_SUCCESS : ChronosRT_ERROR_INVALID;
+    master->fec = et_fec_create_mode(mode);
+    return (master->fec != NULL) ? SUCCESS : ERROR_INVALID;
 }
 
-ChronosRT_status_t ChronosRT_et_master_attach_scheduler(ChronosRT_et_master_t* master,
-                                                        ChronosRT_et_sched_t* sched) {
+status_t et_master_attach_scheduler(et_master_t* master,
+                                                        et_sched_t* sched) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->sched = sched;   /* sin propiedad */
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_master_attach_topology(ChronosRT_et_master_t* master,
-                                                       ChronosRT_et_topology_t* topo) {
+status_t et_master_attach_topology(et_master_t* master,
+                                                       et_topology_t* topo) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->topo = topo;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_master_attach_sync(ChronosRT_et_master_t* master,
-                                                   ChronosRT_et_sync_t* sync) {
+status_t et_master_attach_sync(et_master_t* master,
+                                                   et_sync_t* sync) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->sync = sync;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_master_attach_esm(ChronosRT_et_master_t* master,
-                                                  ChronosRT_et_esm_t* esm) {
+status_t et_master_attach_esm(et_master_t* master,
+                                                  et_esm_t* esm) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->esm = esm;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_master_attach_mbx(ChronosRT_et_master_t* master,
-                                                  ChronosRT_et_mbx_t* mbx) {
+status_t et_master_attach_mbx(et_master_t* master,
+                                                  et_mbx_t* mbx) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->mbx = mbx;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_master_attach_frm(ChronosRT_et_master_t* master,
-                                                  ChronosRT_et_frm_t* frm) {
+status_t et_master_attach_frm(et_master_t* master,
+                                                  et_frm_t* frm) {
     if (master == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     master->frm = frm;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-uint16_t ChronosRT_et_master_last_wkc(const ChronosRT_et_master_t* master) {
+uint16_t et_master_last_wkc(const et_master_t* master) {
     return (master != NULL) ? master->last_wkc : 0u;
 }
 
@@ -352,9 +352,9 @@ uint16_t ChronosRT_et_master_last_wkc(const ChronosRT_et_master_t* master) {
 /* ------------------------------------------------------------------ */
 
 /* Construye la trama (Ethernet II + PDU) en el búfer del maestro y la envía. */
-static ChronosRT_status_t et_transmit_pdu(ChronosRT_et_master_t* master,
+static status_t et_transmit_pdu(et_master_t* master,
                                           uint16_t dest_id,
-                                          const ChronosRT_et_header_t* h,
+                                          const et_header_t* h,
                                           const void* payload, uint16_t len,
                                           bool paced, uint64_t deadline_ns) {
     /*
@@ -380,26 +380,26 @@ static ChronosRT_status_t et_transmit_pdu(ChronosRT_et_master_t* master,
      * comporta como un bus). Con ID local y un nodo concreto, el destino es su
      * MAC LAA: el switch conmuta solo a ese puerto y se elimina el flooding.
      */
-    if (dest_id == ChronosRT_ET_LOCAL_ID_NONE) {
+    if (dest_id == ET_LOCAL_ID_NONE) {
         memset(frame, 0xFF, 6);
     } else {
-        (void)ChronosRT_et_aalid_mac(dest_id, frame);
+        (void)et_aalid_mac(dest_id, frame);
     }
     memcpy(frame + 6, master->port.mac, 6);
-    uint16_t eth_type = htons((uint16_t)ChronosRT_ET_ETHERTYPE);
+    uint16_t eth_type = htons((uint16_t)ET_ETHERTYPE);
     memcpy(frame + 12, &eth_type, sizeof(eth_type));
 
-    uint32_t body = ChronosRT_et_pdu_build(frame + ChronosRT_ET_ETH_HDR_SIZE,
-                                           ChronosRT_ET_MAX_FRAME - ChronosRT_ET_ETH_HDR_SIZE,
+    uint32_t body = et_pdu_build(frame + ET_ETH_HDR_SIZE,
+                                           ET_MAX_FRAME - ET_ETH_HDR_SIZE,
                                            h, payload, len);
     if (body == 0u) {
         if (in_ring) {
             et_socket_tx_cancel(&master->port);   /* libera la ranura sin enviar */
         }
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
-    uint32_t total = ChronosRT_ET_ETH_HDR_SIZE + body;
+    uint32_t total = ET_ETH_HDR_SIZE + body;
     int rc;
     if (in_ring) {
         et_socket_tx_commit(&master->port, total);
@@ -410,22 +410,22 @@ static ChronosRT_status_t et_transmit_pdu(ChronosRT_et_master_t* master,
                    : et_socket_send(&master->port, frame, total);
     }
     if (rc < 0) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     master->stats.frames_tx++;
     master->stats.bytes_tx += (uint64_t)len;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
 /* Rellena la cabecera EtherTux con las reglas comunes de flags y secuencia. */
-static void et_fill_header(ChronosRT_et_master_t* master, ChronosRT_et_header_t* h,
-                           uint8_t priority, ChronosRT_et_type_t type, uint8_t flow_id,
-                           ChronosRT_et_state_t state, uint64_t now,
+static void et_fill_header(et_master_t* master, et_header_t* h,
+                           uint8_t priority, et_type_t type, uint8_t flow_id,
+                           et_state_t state, uint64_t now,
                            uint8_t flow_count, uint16_t block_id) {
     memset(h, 0, sizeof(*h));
     h->type = (uint8_t)type;
-    h->priority = ChronosRT_et_qos_effective_priority(master->qos, priority);
+    h->priority = et_qos_effective_priority(master->qos, priority);
     h->state = (uint8_t)state;
     h->flow_id = flow_id;
     h->seq_num = ++master->seq[flow_id];
@@ -434,51 +434,51 @@ static void et_fill_header(ChronosRT_et_master_t* master, ChronosRT_et_header_t*
     h->block_id = block_id;
     h->flow_count = flow_count;
 
-    if (priority == ChronosRT_ET_P0) {
-        h->flags |= ChronosRT_ET_FLAG_EXPRESS;
+    if (priority == ET_P0) {
+        h->flags |= ET_FLAG_EXPRESS;
     } else {
-        h->flags |= ChronosRT_ET_FLAG_PREEMPTABLE;
+        h->flags |= ET_FLAG_PREEMPTABLE;
     }
-    if (type == ChronosRT_ET_TYPE_FEC) {
-        h->flags |= ChronosRT_ET_FLAG_FEC;
+    if (type == ET_TYPE_FEC) {
+        h->flags |= ET_FLAG_FEC;
     }
-    if (type == ChronosRT_ET_TYPE_DISCOVERY) {
-        h->flags |= ChronosRT_ET_FLAG_DISCOVERY;
+    if (type == ET_TYPE_DISCOVERY) {
+        h->flags |= ET_FLAG_DISCOVERY;
     }
 }
 
-static ChronosRT_status_t et_send_frame_ex(ChronosRT_et_master_t* master,
+static status_t et_send_frame_ex(et_master_t* master,
                                            uint16_t dest_id,
                                            uint8_t priority,
-                                           ChronosRT_et_type_t type,
+                                           et_type_t type,
                                            uint8_t flow_id,
                                            const void* payload, uint16_t len,
                                            uint8_t flow_count,
                                            bool paced, uint64_t deadline_ns,
                                            uint16_t block_id) {
     if (master == NULL || !master->is_open) {
-        return ChronosRT_ERROR_STATE;
+        return ERROR_STATE;
     }
-    if (len > ChronosRT_ET_MAX_PAYLOAD || flow_count == 0u) {
-        return ChronosRT_ERROR_INVALID;
+    if (len > ET_MAX_PAYLOAD || flow_count == 0u) {
+        return ERROR_INVALID;
     }
-    if (priority >= ChronosRT_ET_PRIORITIES) {
-        return ChronosRT_ERROR_INVALID;
+    if (priority >= ET_PRIORITIES) {
+        return ERROR_INVALID;
     }
 
     /* ET-ESM: el estado del nodo emisor limita el tráfico permitido (§6.1). */
-    ChronosRT_et_state_t state = (master->esm != NULL) ? ChronosRT_et_esm_state(master->esm)
-                                                       : ChronosRT_ET_STATE_OP;
-    if (!ChronosRT_et_esm_allows_traffic(state, (uint8_t)type, priority)) {
-        return ChronosRT_ERROR_STATE;
+    et_state_t state = (master->esm != NULL) ? et_esm_state(master->esm)
+                                                       : ET_STATE_OP;
+    if (!et_esm_allows_traffic(state, (uint8_t)type, priority)) {
+        return ERROR_STATE;
     }
 
-    uint64_t now = ChronosRT_tx_timestamp_ns();
-    uint32_t wire = ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE + len;
+    uint64_t now = tx_timestamp_ns();
+    uint32_t wire = ET_ETH_HDR_SIZE + ET_HEADER_SIZE + len;
 
-    ChronosRT_status_t st = ChronosRT_et_qos_admit(master->qos, priority, wire, now);
-    if (st != ChronosRT_SUCCESS) {
-        if (st == ChronosRT_ERROR_DROPPED) {
+    status_t st = et_qos_admit(master->qos, priority, wire, now);
+    if (st != SUCCESS) {
+        if (st == ERROR_DROPPED) {
             master->stats.dropped++;
         } else {
             master->stats.backpressure++;
@@ -492,10 +492,10 @@ static ChronosRT_status_t et_send_frame_ex(ChronosRT_et_master_t* master,
          * Llamada única a tx_timestamp_ns() en lugar de dos llamadas duplicadas.
          * El cálculo de deadline usa ventanas precomputadas en sched->window_ns[]
          * sin división costosa en el camino caliente. */
-        uint64_t now = ChronosRT_tx_timestamp_ns();
+        uint64_t now = tx_timestamp_ns();
         bool paced = true;
         if (paced) {
-            uint8_t window = ChronosRT_et_sched_window_at(master->sched, now);
+            uint8_t window = et_sched_window_at(master->sched, now);
             /* Determinar el inicio de la ventana actual usando valores precomputados. */
             uint64_t window_start = master->sched->window_ns[window];
             /* Si ya estamos past la ventana actual, programar la próxima.
@@ -505,15 +505,15 @@ static ChronosRT_status_t et_send_frame_ex(ChronosRT_et_master_t* master,
                  * Usar la fórmula: si now está en la ventana actual,
                  * la próxima ventana es la siguiente en la secuencia. */
                 uint64_t next_window_start;
-                if (priority == ChronosRT_ET_P0) {
+                if (priority == ET_P0) {
                     /* P0 puede transmitir en cualquier ventana; next_window_start = window actual + cycle */
                     next_window_start = window_start + master->sched->cycle_ns;
                 } else {
                     /* Para P1-P5, determinar la ventana por prioridad */
                     uint8_t target_window;
-                    if (priority == ChronosRT_ET_P1) {
+                    if (priority == ET_P1) {
                         target_window = ET_WINDOW_CONTROL;
-                    } else if (priority == ChronosRT_ET_P2) {
+                    } else if (priority == ET_P2) {
                         target_window = ET_WINDOW_DETERMINISTIC;
                     } else if (priority <= 4) {
                         target_window = ET_WINDOW_RATE;
@@ -531,127 +531,127 @@ static ChronosRT_status_t et_send_frame_ex(ChronosRT_et_master_t* master,
                 deadline_ns = next_window_start;
             }
         }
-        if (!ChronosRT_et_sched_can_transmit(master->sched, priority, now)) {
+        if (!et_sched_can_transmit(master->sched, priority, now)) {
             master->stats.backpressure++;
-            return ChronosRT_ERROR_BACKPRESSURE;
+            return ERROR_BACKPRESSURE;
         }
-    } else if (!ChronosRT_et_sched_can_transmit(master->sched, priority, now)) {
+    } else if (!et_sched_can_transmit(master->sched, priority, now)) {
         master->stats.backpressure++;
-        return ChronosRT_ERROR_BACKPRESSURE;
+        return ERROR_BACKPRESSURE;
     }
 
-    ChronosRT_et_header_t h;
+    et_header_t h;
     et_fill_header(master, &h, priority, type, flow_id, state, now, flow_count, block_id);
 
     st = et_transmit_pdu(master, dest_id, &h, payload, len, paced, deadline_ns);
-    if (st != ChronosRT_SUCCESS) {
+    if (st != SUCCESS) {
         return st;
     }
 
     /*
      * FRM (§8.2): los flujos P0/P1 se duplican por el camino alternativo. El
      * duplicado conserva el SeqNum y marca `Flags[4]`; el receptor lo descarta
-     * con `ChronosRT_et_frm_note_rx`.
+     * con `et_frm_note_rx`.
      */
     if (master->frm != NULL && flow_count == 1u &&
-        ChronosRT_et_frm_should_duplicate(master->frm, priority)) {
-        ChronosRT_et_header_t dup = h;
-        dup.flow_id = ChronosRT_et_frm_alternate_flow(flow_id);
-        dup.flags = (uint8_t)(h.flags | ChronosRT_ET_FLAG_FRM);
+        et_frm_should_duplicate(master->frm, priority)) {
+        et_header_t dup = h;
+        dup.flow_id = et_frm_alternate_flow(flow_id);
+        dup.flags = (uint8_t)(h.flags | ET_FLAG_FRM);
         if (et_transmit_pdu(master, dest_id, &dup, payload, len, paced, deadline_ns) ==
-            ChronosRT_SUCCESS) {
+            SUCCESS) {
             master->stats.duplicates_tx++;
         }
     }
 
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_master_send(ChronosRT_et_master_t* master,
+status_t et_master_send(et_master_t* master,
                                             uint8_t priority,
-                                            ChronosRT_et_type_t type,
+                                            et_type_t type,
                                             uint8_t flow_id,
                                             const void* payload, uint16_t len) {
-    return et_send_frame_ex(master, ChronosRT_ET_LOCAL_ID_NONE, priority, type, flow_id,
+    return et_send_frame_ex(master, ET_LOCAL_ID_NONE, priority, type, flow_id,
                             payload, len, 1u, false, 0u, 0u);
 }
 
-ChronosRT_status_t ChronosRT_et_master_send_to(ChronosRT_et_master_t* master,
+status_t et_master_send_to(et_master_t* master,
                                                uint16_t dest_id,
                                                uint8_t priority,
-                                               ChronosRT_et_type_t type,
+                                               et_type_t type,
                                                uint8_t flow_id,
                                                const void* payload, uint16_t len) {
     return et_send_frame_ex(master, dest_id, priority, type, flow_id,
                             payload, len, 1u, false, 0u, 0u);
 }
 
-ChronosRT_status_t ChronosRT_et_master_send_at(ChronosRT_et_master_t* master,
+status_t et_master_send_at(et_master_t* master,
                                                uint8_t priority,
-                                               ChronosRT_et_type_t type,
+                                               et_type_t type,
                                                uint8_t flow_id,
                                                const void* payload, uint16_t len,
                                                uint64_t tx_deadline_ns) {
-    return et_send_frame_ex(master, ChronosRT_ET_LOCAL_ID_NONE, priority, type, flow_id,
+    return et_send_frame_ex(master, ET_LOCAL_ID_NONE, priority, type, flow_id,
                             payload, len, 1u, true, tx_deadline_ns, 0u);
 }
 
-ChronosRT_status_t ChronosRT_et_master_send_aggregated(ChronosRT_et_master_t* master,
+status_t et_master_send_aggregated(et_master_t* master,
                                                        uint8_t priority,
                                                        uint8_t flow_id,
-                                                       const ChronosRT_et_flow_entry_t* entries,
+                                                       const et_flow_entry_t* entries,
                                                        uint32_t count) {
     if (master == NULL || entries == NULL || count < 2u || count > UINT8_MAX) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     uint32_t plen = 0u;
-    ChronosRT_status_t st = ChronosRT_et_flowagg_build(entries, count, master->aux,
+    status_t st = et_flowagg_build(entries, count, master->aux,
                                                        sizeof(master->aux), &plen);
-    if (st != ChronosRT_SUCCESS) {
+    if (st != SUCCESS) {
         return st;
     }
-    return et_send_frame_ex(master, ChronosRT_ET_LOCAL_ID_NONE, priority,
-                            ChronosRT_ET_TYPE_DATA, flow_id,
+    return et_send_frame_ex(master, ET_LOCAL_ID_NONE, priority,
+                            ET_TYPE_DATA, flow_id,
                             master->aux, (uint16_t)plen, (uint8_t)count,
                             false, 0u, 0u);
 }
 
-ChronosRT_status_t ChronosRT_et_master_send_mailbox(ChronosRT_et_master_t* master,
+status_t et_master_send_mailbox(et_master_t* master,
                                                     uint8_t channel,
                                                     const void* data, uint16_t len,
                                                     uint8_t p4_occupancy_percent) {
     if (master == NULL || master->mbx == NULL || data == NULL || len == 0u) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     uint32_t plen = 0u;
-    ChronosRT_status_t st = ChronosRT_et_mbx_next_segment(master->mbx, channel,
+    status_t st = et_mbx_next_segment(master->mbx, channel,
                                                           (const uint8_t*)data, len,
                                                           master->aux, sizeof(master->aux),
                                                           &plen);
-    if (st != ChronosRT_SUCCESS) {
+    if (st != SUCCESS) {
         return st;
     }
-    uint8_t prio = ChronosRT_et_mbx_effective_priority(master->mbx, p4_occupancy_percent);
-    return et_send_frame_ex(master, ChronosRT_ET_LOCAL_ID_NONE, prio,
-                            ChronosRT_ET_TYPE_MAILBOX_DATA, 255u,
+    uint8_t prio = et_mbx_effective_priority(master->mbx, p4_occupancy_percent);
+    return et_send_frame_ex(master, ET_LOCAL_ID_NONE, prio,
+                            ET_TYPE_MAILBOX_DATA, 255u,
                             master->aux, (uint16_t)plen, 1u, false, 0u, 0u);
 }
 
-ChronosRT_status_t ChronosRT_et_master_send_fec_block(ChronosRT_et_master_t* master,
+status_t et_master_send_fec_block(et_master_t* master,
                                                       uint8_t priority,
                                                       uint8_t flow_id,
                                                       const uint8_t* const* data,
                                                       uint32_t count,
                                                       uint32_t len) {
     if (master == NULL || data == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (master->fec == NULL) {
-        return ChronosRT_ERROR_NOTSUP;
+        return ERROR_NOTSUP;
     }
     if (count != (uint32_t)master->fec->k || len == 0u ||
-        len > ChronosRT_ET_MAX_PAYLOAD) {
-        return ChronosRT_ERROR_INVALID;
+        len > ET_MAX_PAYLOAD) {
+        return ERROR_INVALID;
     }
 
     uint8_t k = master->fec->k;
@@ -660,99 +660,99 @@ ChronosRT_status_t ChronosRT_et_master_send_fec_block(ChronosRT_et_master_t* mas
     /* Usar buffer pre-asignado en lugar de malloc/free (c elimination en el camino caliente). */
     uint8_t* parity_store = master->fec_parity;
 
-    uint8_t* par_ptrs[ChronosRT_RS_MAX_N];
+    uint8_t* par_ptrs[RS_MAX_N];
     for (uint32_t j = 0; j < (uint32_t)(n - k); j++) {
         par_ptrs[j] = parity_store + (size_t)j * len;
     }
 
-    ChronosRT_status_t st = ChronosRT_et_fec_encode(master->fec, data, par_ptrs, len);
-    if (st != ChronosRT_SUCCESS) {
+    status_t st = et_fec_encode(master->fec, data, par_ptrs, len);
+    if (st != SUCCESS) {
         return st;
     }
 
     uint16_t base = (uint16_t)(((uint32_t)(master->block_seq & 0x00FFu)) << 8);
 
     for (uint32_t i = 0; i < k; i++) {
-        st = et_send_frame_ex(master, ChronosRT_ET_LOCAL_ID_NONE, priority,
-                              ChronosRT_ET_TYPE_DATA, flow_id,
+        st = et_send_frame_ex(master, ET_LOCAL_ID_NONE, priority,
+                              ET_TYPE_DATA, flow_id,
                               data[i], (uint16_t)len, 1u, false, 0u,
                               (uint16_t)(base | (uint16_t)i));
-        if (st != ChronosRT_SUCCESS) {
+        if (st != SUCCESS) {
             return st;
         }
     }
     for (uint32_t j = 0; j < (uint32_t)(n - k); j++) {
-        st = et_send_frame_ex(master, ChronosRT_ET_LOCAL_ID_NONE, priority,
-                              ChronosRT_ET_TYPE_FEC, flow_id,
+        st = et_send_frame_ex(master, ET_LOCAL_ID_NONE, priority,
+                              ET_TYPE_FEC, flow_id,
                               par_ptrs[j], (uint16_t)len, 1u, false, 0u,
                               (uint16_t)(base | (uint16_t)(k + j)));
-        if (st != ChronosRT_SUCCESS) {
+        if (st != SUCCESS) {
             return st;
         }
     }
 
     master->block_seq++;
     master->stats.fec_blocks++;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
 /* ------------------------------------------------------------------ */
 /* Camino rápido: cero copias, lotes y velocidad de enlace             */
 /* ------------------------------------------------------------------ */
 
-uint64_t ChronosRT_et_link_speed_bps(const char* ifname) {
+uint64_t et_link_speed_bps(const char* ifname) {
     return et_socket_link_bps(ifname);
 }
 
-ChronosRT_status_t ChronosRT_et_master_open_auto(ChronosRT_et_master_t* master,
+status_t et_master_open_auto(et_master_t* master,
                                                  const char* ifname) {
     if (master == NULL || ifname == NULL || ifname[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     uint64_t bps = et_socket_link_bps(ifname);
     if (bps == 0u) {
         bps = 1000000000ull;   /* enlace caído o no legible: 1 Gbps */
     }
-    return ChronosRT_et_master_open_ex(master, ifname, bps, 0u);
+    return et_master_open_ex(master, ifname, bps, 0u);
 }
 
 /* Cabecera Ethernet + EtherTux contiguas (14 + 26 B) con el CRC ya calculado. */
-static uint32_t et_build_wire_header(ChronosRT_et_master_t* master, uint8_t* out,
-                                     const ChronosRT_et_header_t* h,
+static uint32_t et_build_wire_header(et_master_t* master, uint8_t* out,
+                                     const et_header_t* h,
                                      const void* payload, uint16_t len) {
     memset(out, 0xFF, 6);
     memcpy(out + 6, master->port.mac, 6);
-    uint16_t eth_type = htons((uint16_t)ChronosRT_ET_ETHERTYPE);
+    uint16_t eth_type = htons((uint16_t)ET_ETHERTYPE);
     memcpy(out + 12, &eth_type, sizeof(eth_type));
-    return ChronosRT_et_pdu_build_header(out + ChronosRT_ET_ETH_HDR_SIZE, h, payload, len);
+    return et_pdu_build_header(out + ET_ETH_HDR_SIZE, h, payload, len);
 }
 
-ChronosRT_status_t ChronosRT_et_master_send_zerocopy(ChronosRT_et_master_t* master,
+status_t et_master_send_zerocopy(et_master_t* master,
                                                      uint8_t priority,
-                                                     ChronosRT_et_type_t type,
+                                                     et_type_t type,
                                                      uint8_t flow_id,
                                                      const void* payload, uint16_t len) {
     if (master == NULL || !master->is_open) {
-        return ChronosRT_ERROR_STATE;
+        return ERROR_STATE;
     }
-    if (len > ChronosRT_ET_MAX_PAYLOAD || (payload == NULL && len > 0u)) {
-        return ChronosRT_ERROR_INVALID;
+    if (len > ET_MAX_PAYLOAD || (payload == NULL && len > 0u)) {
+        return ERROR_INVALID;
     }
-    if (priority >= ChronosRT_ET_PRIORITIES) {
-        return ChronosRT_ERROR_INVALID;
-    }
-
-    ChronosRT_et_state_t state = (master->esm != NULL) ? ChronosRT_et_esm_state(master->esm)
-                                                       : ChronosRT_ET_STATE_OP;
-    if (!ChronosRT_et_esm_allows_traffic(state, (uint8_t)type, priority)) {
-        return ChronosRT_ERROR_STATE;
+    if (priority >= ET_PRIORITIES) {
+        return ERROR_INVALID;
     }
 
-    uint64_t now = ChronosRT_tx_timestamp_ns();
-    uint32_t wire = ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE + len;
-    ChronosRT_status_t st = ChronosRT_et_qos_admit(master->qos, priority, wire, now);
-    if (st != ChronosRT_SUCCESS) {
-        if (st == ChronosRT_ERROR_DROPPED) {
+    et_state_t state = (master->esm != NULL) ? et_esm_state(master->esm)
+                                                       : ET_STATE_OP;
+    if (!et_esm_allows_traffic(state, (uint8_t)type, priority)) {
+        return ERROR_STATE;
+    }
+
+    uint64_t now = tx_timestamp_ns();
+    uint32_t wire = ET_ETH_HDR_SIZE + ET_HEADER_SIZE + len;
+    status_t st = et_qos_admit(master->qos, priority, wire, now);
+    if (st != SUCCESS) {
+        if (st == ERROR_DROPPED) {
             master->stats.dropped++;
         } else {
             master->stats.backpressure++;
@@ -760,30 +760,30 @@ ChronosRT_status_t ChronosRT_et_master_send_zerocopy(ChronosRT_et_master_t* mast
         return st;
     }
     if (master->sched != NULL &&
-        !ChronosRT_et_sched_can_transmit(master->sched, priority, now)) {
+        !et_sched_can_transmit(master->sched, priority, now)) {
         master->stats.backpressure++;
-        return ChronosRT_ERROR_BACKPRESSURE;
+        return ERROR_BACKPRESSURE;
     }
 
-    ChronosRT_et_header_t h;
+    et_header_t h;
     et_fill_header(master, &h, priority, type, flow_id, state, now, 1u, 0u);
 
     uint8_t* hdr = master->tx_frame;   /* solo los primeros 40 B */
     if (et_build_wire_header(master, hdr, &h, payload, len) == 0u) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
-    uint32_t hdr_len = ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE;
+    uint32_t hdr_len = ET_ETH_HDR_SIZE + ET_HEADER_SIZE;
     if (et_socket_send_iov(&master->port, hdr, hdr_len, payload, len) < 0) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
     master->stats.frames_tx++;
     master->stats.bytes_tx += (uint64_t)len;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-int ChronosRT_et_master_send_batch(ChronosRT_et_master_t* master,
-                                   const ChronosRT_et_batch_item_t* items,
+int et_master_send_batch(et_master_t* master,
+                                   const et_batch_item_t* items,
                                    uint32_t count) {
     enum { ET_BATCH_MAX = 16u };
 
@@ -797,31 +797,31 @@ int ChronosRT_et_master_send_batch(ChronosRT_et_master_t* master,
     /* Estado pre-asignado del lote (el maestro no es thread-safe). */
     static struct mmsghdr msgs[ET_BATCH_MAX];
     static struct iovec   iovs[ET_BATCH_MAX][2];
-    static uint8_t        hdrs[ET_BATCH_MAX][ChronosRT_ET_ETH_HDR_SIZE +
-                                            ChronosRT_ET_HEADER_SIZE];
+    static uint8_t        hdrs[ET_BATCH_MAX][ET_ETH_HDR_SIZE +
+                                            ET_HEADER_SIZE];
 
-    const ChronosRT_et_state_t state = (master->esm != NULL)
-                                           ? ChronosRT_et_esm_state(master->esm)
-                                           : ChronosRT_ET_STATE_OP;
-    uint64_t now = ChronosRT_tx_timestamp_ns();
+    const et_state_t state = (master->esm != NULL)
+                                           ? et_esm_state(master->esm)
+                                           : ET_STATE_OP;
+    uint64_t now = tx_timestamp_ns();
     uint64_t bytes = 0u;
     uint32_t n = 0u;
 
     for (uint32_t i = 0; i < count; i++) {
-        const ChronosRT_et_batch_item_t* it = &items[i];
-        if (it->priority >= ChronosRT_ET_PRIORITIES ||
-            it->len > ChronosRT_ET_MAX_PAYLOAD ||
+        const et_batch_item_t* it = &items[i];
+        if (it->priority >= ET_PRIORITIES ||
+            it->len > ET_MAX_PAYLOAD ||
             (it->payload == NULL && it->len > 0u)) {
             continue;
         }
-        if (!ChronosRT_et_esm_allows_traffic(state, (uint8_t)it->type, it->priority)) {
+        if (!et_esm_allows_traffic(state, (uint8_t)it->type, it->priority)) {
             continue;
         }
 
-        uint32_t wire = ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE + it->len;
-        ChronosRT_status_t st = ChronosRT_et_qos_admit(master->qos, it->priority, wire, now);
-        if (st != ChronosRT_SUCCESS) {
-            if (st == ChronosRT_ERROR_DROPPED) {
+        uint32_t wire = ET_ETH_HDR_SIZE + ET_HEADER_SIZE + it->len;
+        status_t st = et_qos_admit(master->qos, it->priority, wire, now);
+        if (st != SUCCESS) {
+            if (st == ERROR_DROPPED) {
                 master->stats.dropped++;
             } else {
                 master->stats.backpressure++;
@@ -829,7 +829,7 @@ int ChronosRT_et_master_send_batch(ChronosRT_et_master_t* master,
             continue;
         }
 
-        ChronosRT_et_header_t h;
+        et_header_t h;
         et_fill_header(master, &h, it->priority, it->type, it->flow_id, state,
                        now, 1u, 0u);
         if (et_build_wire_header(master, hdrs[n], &h, it->payload, it->len) == 0u) {
@@ -837,7 +837,7 @@ int ChronosRT_et_master_send_batch(ChronosRT_et_master_t* master,
         }
 
         iovs[n][0].iov_base = hdrs[n];
-        iovs[n][0].iov_len = ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE;
+        iovs[n][0].iov_len = ET_ETH_HDR_SIZE + ET_HEADER_SIZE;
         iovs[n][1].iov_base = (void*)it->payload;
         iovs[n][1].iov_len = it->len;
 
@@ -865,8 +865,8 @@ int ChronosRT_et_master_send_batch(ChronosRT_et_master_t* master,
 /* Recepción                                                           */
 /* ------------------------------------------------------------------ */
 
-int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
-                             ChronosRT_et_header_t* hdr,
+int et_master_recv(et_master_t* master,
+                             et_header_t* hdr,
                              void* payload, uint32_t bufsize,
                              uint32_t timeout_us) {
     if (master == NULL || !master->is_open) {
@@ -876,13 +876,13 @@ int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
     /* Se leen hasta 8 tramas para descartar duplicados FRM sin bloquear. */
     for (unsigned attempt = 0; attempt < 8u; attempt++) {
         int n = et_socket_recv(&master->port, master->rx_frame,
-                               ChronosRT_ET_MAX_FRAME,
+                               ET_MAX_FRAME,
                                (attempt == 0u) ? timeout_us : 0u, NULL);
         if (n < 0) {
             return -1;
         }
 
-        if (n < (int)ChronosRT_ET_ETH_HDR_SIZE) {
+        if (n < (int)ET_ETH_HDR_SIZE) {
             master->stats.frame_errors++;
             return -1;
         }
@@ -894,12 +894,12 @@ int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
  * Este check se realiza DESPUÉS de confirmar que la trama es EtherTux
  * y tiene tamaño mínimo, ANTES de parsear la PDU y el CRC.
  */
-        if (master->local_id != ChronosRT_ET_LOCAL_ID_NONE) {
+        if (master->local_id != ET_LOCAL_ID_NONE) {
             uint8_t da0 = master->rx_frame[0];
             if ((da0 & 0x01u) == 0u) {
                 /* Unicast: comparar con la MAC local LAA */
                 if (!master->port.mac_laa_valid) {
-                    (void)ChronosRT_et_aalid_mac(master->local_id, master->port.mac_laa);
+                    (void)et_aalid_mac(master->local_id, master->port.mac_laa);
                     master->port.mac_laa_valid = true;
                 }
                 if (memcmp(master->rx_frame + 0, master->port.mac_laa, 6u) != 0) {
@@ -911,33 +911,33 @@ int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
         }
         /* Sin ID local: aceptar todo (comportamiento legacy) */
 
-        uint32_t body_len = (uint32_t)n - ChronosRT_ET_ETH_HDR_SIZE;
-        ChronosRT_et_header_t h;
+        uint32_t body_len = (uint32_t)n - ET_ETH_HDR_SIZE;
+        et_header_t h;
         const uint8_t* pl = NULL;
-        uint32_t used = ChronosRT_et_pdu_parse(master->rx_frame + ChronosRT_ET_ETH_HDR_SIZE,
+        uint32_t used = et_pdu_parse(master->rx_frame + ET_ETH_HDR_SIZE,
                                                body_len, &h, &pl);
         if (used == 0u) {
             master->stats.frame_errors++;
             return -1;
         }
 
-        uint32_t pl_len = used - ChronosRT_ET_HEADER_SIZE;
+        uint32_t pl_len = used - ET_HEADER_SIZE;
         if (pl_len > bufsize) {
             master->stats.frame_errors++;
             return -1;
         }
 
         const uint8_t* src_mac = master->rx_frame + 6;
-        uint64_t now = ChronosRT_tx_timestamp_ns();
+        uint64_t now = tx_timestamp_ns();
 
         /* Si el origen ya usa una MAC local, su ID mantiene viva la entrada CAM
          * y el temporizador de admisión. El heartbeat tiene granularidad de
          * segundos (60 s), así que muestrear 1 de cada 64 tramas basta y evita
          * un hash por trama en el camino de recepción. */
         if (master->aalid != NULL && (master->stats.frames_rx & 63u) == 0u) {
-            const uint16_t src_id = ChronosRT_et_aalid_id_from_mac(src_mac);
-            if (src_id != ChronosRT_ET_LOCAL_ID_NONE) {
-                (void)ChronosRT_et_aalid_heartbeat(master->aalid, src_id, now / 1000000ull);
+            const uint16_t src_id = et_aalid_id_from_mac(src_mac);
+            if (src_id != ET_LOCAL_ID_NONE) {
+                (void)et_aalid_heartbeat(master->aalid, src_id, now / 1000000ull);
             }
         }
 
@@ -949,8 +949,8 @@ int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
         /* FRM (§8.2): la segunda copia de un flujo crítico se descarta. */
         if (master->frm != NULL && node_id != 0u) {
             bool is_new = true;
-            (void)ChronosRT_et_frm_note_rx(master->frm, node_id, h.seq_num,
-                                           (h.flags & ChronosRT_ET_FLAG_FRM) != 0u,
+            (void)et_frm_note_rx(master->frm, node_id, h.seq_num,
+                                           (h.flags & ET_FLAG_FRM) != 0u,
                                            &is_new);
             if (!is_new) {
                 continue;   /* duplicado: no se entrega a la aplicación */
@@ -959,33 +959,33 @@ int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
 
         /* ET-WKC (§6.2): comparación con el valor esperado del registro. */
         if (master->topo != NULL) {
-            if (ChronosRT_et_topology_on_frame(master->topo, src_mac, &h, now) ==
-                ChronosRT_ERROR_CORRUPT) {
+            if (et_topology_on_frame(master->topo, src_mac, &h, now) ==
+                ERROR_CORRUPT) {
                 master->stats.wkc_mismatches++;
             }
         }
 
         /* ET-Sync (§5): reporte de offset del nodo y clasificación. */
         if (master->sync != NULL && node_id != 0u &&
-            h.type == (uint8_t)ChronosRT_ET_TYPE_SYNC_REPORT) {
+            h.type == (uint8_t)ET_TYPE_SYNC_REPORT) {
             int64_t off = 0;
-            if (ChronosRT_et_sync_parse_report(pl, pl_len, &off) == ChronosRT_SUCCESS) {
-                ChronosRT_et_sync_status_t stt = ChronosRT_ET_SYNC_OK;
-                (void)ChronosRT_et_sync_process_report(master->sync, node_id, off, now, &stt);
-                if (stt == ChronosRT_ET_SYNC_OUT_OF_SYNC) {
+            if (et_sync_parse_report(pl, pl_len, &off) == SUCCESS) {
+                et_sync_status_t stt = ET_SYNC_OK;
+                (void)et_sync_process_report(master->sync, node_id, off, now, &stt);
+                if (stt == ET_SYNC_OUT_OF_SYNC) {
                     master->stats.sync_out_of_sync++;
                 }
             }
         }
 
         /* ET-MBX (§9): ACK/NACK del mailbox. */
-        if (master->mbx != NULL && h.type == (uint8_t)ChronosRT_ET_TYPE_MAILBOX_ACK) {
+        if (master->mbx != NULL && h.type == (uint8_t)ET_TYPE_MAILBOX_ACK) {
             uint8_t ch = 0u;
             uint16_t seq = 0u;
             bool accepted = false;
-            if (ChronosRT_et_mbx_parse_ack(pl, pl_len, &ch, &seq, &accepted) ==
-                ChronosRT_SUCCESS) {
-                (void)ChronosRT_et_mbx_on_ack(master->mbx, ch, seq, accepted, now);
+            if (et_mbx_parse_ack(pl, pl_len, &ch, &seq, &accepted) ==
+                SUCCESS) {
+                (void)et_mbx_on_ack(master->mbx, ch, seq, accepted, now);
             }
         }
 
@@ -1007,21 +1007,21 @@ int ChronosRT_et_master_recv(ChronosRT_et_master_t* master,
 /* Heartbeat, nodos y sincronización                                   */
 /* ------------------------------------------------------------------ */
 
-uint32_t ChronosRT_et_master_heartbeat(ChronosRT_et_master_t* master, uint64_t now_ns) {
+uint32_t et_master_heartbeat(et_master_t* master, uint64_t now_ns) {
     if (master == NULL) {
         return 0u;
     }
 
     /* Con registro de nodos asociado, él es la autoridad del ciclo de vida. */
     if (master->topo != NULL) {
-        return ChronosRT_et_topology_tick(master->topo, now_ns, master->cycle_ns);
+        return et_topology_tick(master->topo, now_ns, master->cycle_ns);
     }
 
     uint64_t limit = (uint64_t)master->cycle_ns * 3ull;
     uint32_t newly_lost = 0u;
 
     for (uint32_t i = 0; i < master->node_count; i++) {
-        ChronosRT_et_node_t* n = &master->nodes[i];
+        et_node_t* n = &master->nodes[i];
         if (n->lost || n->last_seen_ns <= 0) {
             continue;
         }
@@ -1030,19 +1030,19 @@ uint32_t ChronosRT_et_master_heartbeat(ChronosRT_et_master_t* master, uint64_t n
             n->lost = true;
             newly_lost++;
             if (master->sched != NULL) {
-                (void)ChronosRT_et_sched_remove_node(master->sched, n->id);
+                (void)et_sched_remove_node(master->sched, n->id);
             }
         }
     }
     return newly_lost;
 }
 
-uint32_t ChronosRT_et_master_node_count(const ChronosRT_et_master_t* master) {
+uint32_t et_master_node_count(const et_master_t* master) {
     return (master != NULL) ? master->node_count : 0u;
 }
 
-bool ChronosRT_et_master_node(const ChronosRT_et_master_t* master, uint32_t index,
-                              ChronosRT_et_node_t* out) {
+bool et_master_node(const et_master_t* master, uint32_t index,
+                              et_node_t* out) {
     if (master == NULL || out == NULL || index >= master->node_count) {
         return false;
     }
@@ -1050,33 +1050,33 @@ bool ChronosRT_et_master_node(const ChronosRT_et_master_t* master, uint32_t inde
     return true;
 }
 
-ChronosRT_status_t ChronosRT_et_master_rtt_sync(ChronosRT_et_master_t* master,
+status_t et_master_rtt_sync(et_master_t* master,
                                                 const uint8_t mac[6],
                                                 uint32_t rtt_ns) {
     if (master == NULL || mac == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     for (uint32_t i = 0; i < master->node_count; i++) {
         if (memcmp(master->nodes[i].mac, mac, 6) == 0) {
             master->nodes[i].rtt_ns = rtt_ns;
             /* Hipótesis de simetría: el reloj del nodo va RTT/2 por detrás. */
             master->nodes[i].clock_offset_ns = -(int64_t)(rtt_ns / 2u);
-            return ChronosRT_SUCCESS;
+            return SUCCESS;
         }
     }
-    return ChronosRT_ERROR_INVALID;
+    return ERROR_INVALID;
 }
 
-ChronosRT_status_t ChronosRT_et_master_stats(const ChronosRT_et_master_t* master,
-                                             ChronosRT_et_master_stats_t* out) {
+status_t et_master_stats(const et_master_t* master,
+                                             et_master_stats_t* out) {
     if (master == NULL || out == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     *out = master->stats;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-void ChronosRT_et_master_reset_stats(ChronosRT_et_master_t* master) {
+void et_master_reset_stats(et_master_t* master) {
     if (master != NULL) {
         memset(&master->stats, 0, sizeof(master->stats));
     }

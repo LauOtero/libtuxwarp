@@ -9,7 +9,7 @@
 *   - QoS dinámico con prioridades
 *   - Estadísticas agregadas
 */
-#include "chronosrt_transport.h"
+#include "transport.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -399,7 +399,7 @@ static void test_multi_send_recv(void) {
 }
 
 int main(void) {
-    printf("ChronosRT Multi-NIC Test Suite\n");
+    printf("libtuxwarp Multi-NIC Test Suite\n");
     printf("================================\n");
 
     test_sirc_create_multi();

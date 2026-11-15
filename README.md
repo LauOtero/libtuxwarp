@@ -1,4 +1,4 @@
-# ChronosRT Master
+# libtuxwarp
 
 **Capa de tiempo real determinista para control industrial sobre SBC y x86-64.**
 
@@ -9,7 +9,7 @@
 [![Tests](https://img.shields.io/badge/tests-10%2F10%20suites-brightgreen.svg)](#tests)
 [![Licencia](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](#licencia)
 
-ChronosRT Master es una biblioteca C11 (`libchronosrt.so`, ABI `0x000100`) que
+libtuxwarp es una biblioteca C11 (`liblibtuxwarp.so`, ABI `0x000100`) que
 convierte una placa ARM64, ARMv7 o x86-64 con Linux en un nodo de comunicación
 **determinista**: planifica los ciclos con cotas acotadas, envía tramas con
 *pacing* por hardware, protege el tráfico crítico frente a la congestión y
@@ -25,13 +25,13 @@ hardware o el kernel no está preparado.
 - **EtherTux v0.1.0** (`AF_PACKET`, `0x88B5`): Ethernet comercial determinista.
 - **ID local determinista**: MAC LAA derivada del ID, filtro de recepción O(1) y
   admisión con autoridad central (sin *flooding* del switch).
-- **10 suites / 547 aserciones** · **321 símbolos `ChronosRT_*`** · build `Release` sin warnings.
+- **10 suites / 547 aserciones** · **321 símbolos `*`** · build `Release` sin warnings.
 
 ---
 
 ## Índice
 
-- [Qué es ChronosRT Master](#qué-es-chronosrt-master)
+- [Qué es libtuxwarp](#qué-es-libtuxwarp-master)
 - [Estado del proyecto](#estado-del-proyecto)
 - [Inicio rápido](#inicio-rápido)
 - [Características](#características)
@@ -54,7 +54,7 @@ hardware o el kernel no está preparado.
 
 ---
 
-## Qué es ChronosRT Master
+## Qué es libtuxwarp
 
 | Necesidad | Qué aporta |
 | --- | --- |
@@ -62,7 +62,7 @@ hardware o el kernel no está preparado.
 | Comunicación con esclavas EtherCAT | Maestro autónomo sobre `AF_PACKET`/`0x88A4`: escaneo, FMMU/SM, *process data*, DC (`sync0`/`sync01`), CoE/SDO y redundancia de doble NIC. |
 | Determinismo sin hardware EtherCAT | **EtherTux** sobre Ethernet comercial (`0x88B5`): superframe de 1 ms, ventanas dedicadas, QoS P0–P5, *backpressure*, LAPM, FEC y *heartbeat*. |
 | Recuperar pérdidas sin retransmitir | FEC Reed-Solomon RS(10,8)/RS(16,8) sobre GF(2^8) con decodificación de borrados. |
-| Validar la plataforma | `ChronosRT_kernel_probe()`: PREEMPT_RT, `isolcpus`, `nohz_full`, `rcu_nocbs`, EEVDF, `sched_ext`, `io_uring`, AF_XDP, `SCHED_DEADLINE` y `memfd_secret`, con nivel de soporte 0–3. |
+| Validar la plataforma | `kernel_probe()`: PREEMPT_RT, `isolcpus`, `nohz_full`, `rcu_nocbs`, EEVDF, `sched_ext`, `io_uring`, AF_XDP, `SCHED_DEADLINE` y `memfd_secret`, con nivel de soporte 0–3. |
 | Medir y demostrar rendimiento | Benchmark integrado (latencia, throughput, jitter, estrés, WCET, `frame`, `crc`) y contadores/traza. |
 | Sobrevivir a un fallo | Snapshot A/B, WAL con reproducción y *Golden Image* con CRC. |
 | Integrarse con el ecosistema TuxRT | Se publica como **proveedor** (`tuxrt_provider_descriptor`) descubierto por `libtuxrt_core` vía `dlopen`; nunca enlaza contra él. |
@@ -90,10 +90,10 @@ build `Release`, *governor* **`performance`**, **núcleos 2–3 aislados** con
 | --- | --- |
 | Compilación | **0 errores, 0 warnings** |
 | `ctest` | **10/10 suites**, **547 aserciones** |
-| Símbolos exportados | **321 `ChronosRT_*`** con visibilidad controlada |
+| Símbolos exportados | **321 `*`** con visibilidad controlada |
 | HAL detectada | `crc32c_backend = "sse4.2-x4"`, `fec_backend = "avx2"` |
 | Benchmark | `--mode frame`, `crc`, `aalid`, `latency`, `jitter`, `wcet` y `throughput`; eleva a `SCHED_FIFO`, calienta y publica p50/p99/p99.9 + picos > 10 µs |
-| Versión / ABI | `0.1.0` / `0x000100` · SONAME `libchronosrt.so.0` |
+| Versión / ABI | `0.1.0` / `0x000100` · SONAME `liblibtuxwarp.so.0` |
 | Rendimiento actual | Latencia 23 ns (p50 25 ns, p99.9 50 ns), Throughput 46,27 M eventos/s (1P+1C), WCET 16,9 µs |
 
 > Los objetivos de latencia (< 10 µs), jitter (σ < 1 µs) y throughput
@@ -103,7 +103,7 @@ build `Release`, *governor* **`performance`**, **núcleos 2–3 aislados** con
 > **latencia 23 ns**, **σ 51 ns**, **p99.9 50 ns**, **WCET 16,9 µs** con
 > **1,9–4,1 picos > 10 µs por millón** y **46,3 M eventos/s** (1P+1C)
 > (detalle en [Rendimiento medido](#rendimiento-medido)).
-> Las cifras de red deben validarse en cada plataforma con `chronosrt_bench`,
+> Las cifras de red deben validarse en cada plataforma con `bench`,
 > `rtla` y `cyclictest`.
 
 ---
@@ -111,24 +111,24 @@ build `Release`, *governor* **`performance`**, **núcleos 2–3 aislados** con
 ## Inicio rápido
 
 ```bash
-git clone https://github.com/LauOtero/ChronosRT_MASTER.git
-cd ChronosRT_MASTER
+git clone https://github.com/LauOtero/libtuxwarp.git
+cd libtuxwarp
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 
 # Coste de CPU por trama y capacidad de la HAL (núcleo aislado 2)
-taskset -c 2 ./build/chronosrt_bench --mode frame
-taskset -c 2 ./build/chronosrt_bench --mode crc --duration 1
+taskset -c 2 ./build/bench --mode frame
+taskset -c 2 ./build/bench --mode crc --duration 1
 ```
 
 Salida esperada (extracto real con `taskset -c 2` sobre `7.3.0-2-cachyos-rt-bore`):
 
 ```text
-[chronosrt] Kernel: 7.3.0 (7.3.0-2-cachyos-rt-bore)
-[chronosrt] PREEMPT_RT: sí
-[chronosrt] aislamiento: isolcpus=on nohz_full=on rcu_nocbs=on
+[libtuxwarp] Kernel: 7.3.0 (7.3.0-2-cachyos-rt-bore)
+[libtuxwarp] PREEMPT_RT: sí
+[libtuxwarp] aislamiento: isolcpus=on nohz_full=on rcu_nocbs=on
 
 EtherCAT (datagrama de 10 B + datos):
   construir datagrama (1024 B)   22.10 ns
@@ -146,7 +146,7 @@ Para compilar para una SBC concreta:
 ./scripts/build.sh --list
 ./scripts/build.sh --detect
 ./scripts/build.sh --sbc rpi5 --release
-./scripts/build.sh --sbc bpi-m2-zero      # ARMv7 sin CRC32 por hardware
+./scripts/build.sh --sbc rpi5 --release
 ```
 
 Guía completa: [PORTING.md](docs/PORTING.md).
@@ -189,25 +189,25 @@ flowchart TB
 <details>
 <summary><strong>Estructura del código y superficie pública</strong></summary>
 
-`src/` se organiza por subsistema; `include/chronosrt/` mantiene una API plana y
+`src/` se organiza por subsistema; `include/libtuxwarp/` mantiene una API plana y
 estable para no romper los `#include` de los consumidores.
 
 ```text
-ChronosRT_MASTER/
+libtuxwarp/
 ├── src/
 │   ├── core/                 # eventos, memoria, SCHED_*, RT, resiliencia, obs
 │   ├── platform/             # detección y validación del kernel (5.15+ … 7.x)
 │   ├── hwaccel/              # CRC-32C, GF(2^8), Reed-Solomon, PHC
 │   ├── protocols/
-│   │   ├── chronosrt_protocol.c   # selección EtherCAT / EtherTux
+│   │   ├── protocol.c   # selección EtherCAT / EtherTux
 │   │   ├── ethercat/              # ec_frame/socket/master/slave/dc/mailbox
 │   │   └── ethertux/              # et_frame/fec/qos/sched/esm/sync/topology
 │   │                              # et_mbx/flowagg/frm/aalid/socket/master
 │   ├── integration/          # puente desacoplado con libtuxrt_core
 │   ├── simd/                 # hash, copia y batch vectorizados
 │   └── benchmark/            # motor de benchmarking
-├── include/chronosrt/        # API pública plana y estable (ABI)
-├── tools/benchmark.c         # CLI chronosrt_bench
+├── include/libtuxwarp/        # API pública plana y estable (ABI)
+├── tools/benchmark.c         # CLI bench
 ├── scripts/                  # build.sh, test_runner.sh, lib/sbc.sh
 ├── tests/                    # 10 suites
 └── docs/                     # manuales, API, portación, informes
@@ -215,23 +215,23 @@ ChronosRT_MASTER/
 
 | Cabecera | Contenido |
 | --- | --- |
-| `chronosrt.h` | Ciclo de vida, eventos, benchmark/métricas, plataforma y relojes. |
-| `chronosrt_kernel.h` | `ChronosRT_kernel_probe/print/summary/is_supported`. |
-| `chronosrt_sched.h` | `SCHED_DEADLINE`, `SCHED_FIFO`, afinidad y aislamiento de CPU. |
-| `chronosrt_rt.h` | Histograma, WCET, watchdog y `timerfd`. |
-| `chronosrt_mem.h` | Pools, `prefault`, `mlockall`, hugepages y NUMA. |
-| `chronosrt_ring.h`, `chronosrt_mpmc.h`, `chronosrt_bounded.h` | Colas lock-free SPSC/MPMC/bounded. |
-| `chronosrt_resilience.h` | Snapshot A/B, WAL y Golden Image. |
-| `chronosrt_obs.h` | Contadores, traza y autotest de colas. |
-| `chronosrt_simd.h` | `batch_zero`, `batch_copy`, `hash`. |
-| `chronosrt_hwaccel.h` | Matriz de ISA, CRC-32C, GF(2^8), RS(N,K) y PHC/Launch Time. |
-| `chronosrt_protocol.h` | `ChronosRT_protocol_default/from_string/from_env/name`. |
-| `chronosrt_ethercat.h` | Maestro EtherCAT completo. |
-| `chronosrt_ethertux.h` | EtherTux v0.1.0 completo, ID local determinista (MAC LAA) y TX por anillo. |
-| `chronosrt_tuxrt.h` | Puente de eventos y coexistencia de ABI. |
-| `chronosrt_abi.h` | Versión, ABI numérico, visibilidad y alineación. |
+| `libtuxwarp.h` | Ciclo de vida, eventos, benchmark/métricas, plataforma y relojes. |
+| `kernel.h` | `kernel_probe/print/summary/is_supported`. |
+| `sched.h` | `SCHED_DEADLINE`, `SCHED_FIFO`, afinidad y aislamiento de CPU. |
+| `rt.h` | Histograma, WCET, watchdog y `timerfd`. |
+| `mem.h` | Pools, `prefault`, `mlockall`, hugepages y NUMA. |
+| `ring.h`, `mpmc.h`, `bounded.h` | Colas lock-free SPSC/MPMC/bounded. |
+| `resilience.h` | Snapshot A/B, WAL y Golden Image. |
+| `obs.h` | Contadores, traza y autotest de colas. |
+| `simd.h` | `batch_zero`, `batch_copy`, `hash`. |
+| `hwaccel.h` | Matriz de ISA, CRC-32C, GF(2^8), RS(N,K) y PHC/Launch Time. |
+| `protocol.h` | `protocol_default/from_string/from_env/name`. |
+| `ethercat.h` | Maestro EtherCAT completo. |
+| `ethertux.h` | EtherTux v0.1.0 completo, ID local determinista (MAC LAA) y TX por anillo. |
+| `tuxrt.h` | Puente de eventos y coexistencia de ABI. |
+| `abi.h` | Versión, ABI numérico, visibilidad y alineación. |
 
-Todas las funciones públicas usan el prefijo `ChronosRT_` y `CHRONOSRT_API`; el
+Todas las funciones públicas usan el prefijo `` y `API`; el
 resto se compila con `-fvisibility=hidden`.
 
 </details>
@@ -254,17 +254,17 @@ La selección es de **tiempo de configuración** y nunca simultánea sobre la mi
 interfaz:
 
 ```bash
-export CHRONOSRT_PROTOCOL=ethertux   # o ethercat (defecto)
+export PROTOCOL=ethertux   # o ethercat (defecto)
 ```
 
-También por API: `ChronosRT_protocol_from_string("ethertux")`.
+También por API: `protocol_from_string("ethertux")`.
 
 <details>
 <summary><strong>EtherCAT: maestro autónomo</strong></summary>
 
 Conforme a IEC 61158 / ETG.1000 sobre `AF_PACKET`, sin SOEM ni IgH:
 
-- Enumeración de interfaces (`ChronosRT_ec_interface_*`) y apertura simple o
+- Enumeración de interfaces (`ec_interface_*`) y apertura simple o
   redundante.
 - Construcción/parseo de datagramas (`APRD`, `APWR`, `LRW`, `LRD`, `LWR`,
   `ARMW`, `FRMW`) y varios datagramas por trama (bit M).
@@ -316,10 +316,10 @@ ip -br link                 # estado, MAC y nombre de cada interfaz
 ls /sys/class/net           # alternativa sin iproute2
 ```
 
-`ChronosRT_ec_interface_count()` + `ChronosRT_ec_interface(i)` enumeran las
-interfaces, y `ChronosRT_ec_interface_index("enp2s0")` resuelve un nombre a
-índice. Si el nombre no existe o falta `CAP_NET_RAW`, `ChronosRT_ec_master_open()` /
-`ChronosRT_et_master_open()` devuelven error **sin abortar** el proceso.
+`ec_interface_count()` + `ec_interface(i)` enumeran las
+interfaces, y `ec_interface_index("enp2s0")` resuelve un nombre a
+índice. Si el nombre no existe o falta `CAP_NET_RAW`, `ec_master_open()` /
+`et_master_open()` devuelven error **sin abortar** el proceso.
 
 ---
 
@@ -423,7 +423,7 @@ repeticiones** (23 / 25 / 50 / 50 ns); lo único que varía es el WCET (15,9–1
 | **Optimizaciones I+D+i aplicadas** | — | **CRC-32C SSE4.2, Q32 multiplicación, caché LAA, filtrado temprano MAC** | **Mejora global** |
 
 **`-march=native` no aporta nada medible.** Se compiló una segunda variante con
-`-DCHRONOSRT_ENABLE_NATIVE=ON` y se repitió la campaña: latencia media **23 ns**
+`-DENABLE_NATIVE=ON` y se repitió la campaña: latencia media **23 ns**
 (igual), throughput 1P+1C **43,6 M/s** (dentro del ruido), CRC MTU **24,6 GB/s**
 y PDU 1464 B **90,3 ns**. La razón es que los kernels calientes (CRC, FEC,
 copia SIMD) ya se compilan con `target(...)` y se seleccionan en *runtime*; el
@@ -448,15 +448,15 @@ build portable no pierde rendimiento y conserva la portabilidad del binario.
 ```bash
 # Campaña reproducible (núcleos aislados 2 y 3, governor performance).
 # Cada modo se repite 5 veces y se publica la mediana.
-taskset -c 2 ./build/chronosrt_bench --mode latency    --duration 4
-taskset -c 2 ./build/chronosrt_bench --mode jitter     --duration 4
-taskset -c 2 ./build/chronosrt_bench --mode wcet       --duration 4
-taskset -c 2,3 ./build/chronosrt_bench --mode throughput --duration 4 --threads 2
-taskset -c 2,3,4,5 ./build/chronosrt_bench --mode throughput --duration 4 --threads 4
-taskset -c 2,3,4,5 ./build/chronosrt_bench --mode stress     --duration 4 --threads 4
-taskset -c 2 ./build/chronosrt_bench --mode frame
-taskset -c 2 ./build/chronosrt_bench --mode crc --duration 2
-taskset -c 2 ./build/chronosrt_bench --mode aalid
+taskset -c 2 ./build/bench --mode latency    --duration 4
+taskset -c 2 ./build/bench --mode jitter     --duration 4
+taskset -c 2 ./build/bench --mode wcet       --duration 4
+taskset -c 2,3 ./build/bench --mode throughput --duration 4 --threads 2
+taskset -c 2,3,4,5 ./build/bench --mode throughput --duration 4 --threads 4
+taskset -c 2,3,4,5 ./build/bench --mode stress     --duration 4 --threads 4
+taskset -c 2 ./build/bench --mode frame
+taskset -c 2 ./build/bench --mode crc --duration 2
+taskset -c 2 ./build/bench --mode aalid
 ```
 
 > **Cómo leer las cifras.** El *host* es una VM sobre un 4800H: el *governor*
@@ -507,7 +507,7 @@ PDU por separado: **−61 % de CPU** y **−44 % de bytes**.
 
 Esquema de dos niveles: el receptor deriva un ID de 16 bits de la MAC (filtro
 compacto y determinista) y el maestro es la autoridad que garantiza unicidad.
-Medido con `chronosrt_bench --mode aalid`:
+Medido con `bench --mode aalid`:
 
 | Operación | Coste |
 |-----------|-------|
@@ -557,7 +557,7 @@ carga ~55 ns (21 %) y resto ~8 ns. `crc32q` tiene *throughput* 1/ciclo pero
    latencia y combina con tablas de *skip*. Medido en MTU: **1,77 → 23,55 GB/s** (×13,3).
 2. **Despacho sin `pthread_once`**: puntero de función con escritura atómica y
    carga relajada.
-3. **Construcción sin copia** (`ChronosRT_et_pdu_build_header`) y envío con dos
+3. **Construcción sin copia** (`et_pdu_build_header`) y envío con dos
    iovecs (`sendmsg`).
 4. **Anillo `PACKET_TX_RING`**: una llamada al sistema por lote completo.
 5. **Envío por lotes** (`sendmmsg`, hasta 16 tramas).
@@ -597,7 +597,7 @@ determinismo y eliminación de costes del camino caliente:
 | **Despertar** | `futex` convertido en *eventcount*: secuencia monótona, plazo absoluto, `FUTEX_PRIVATE_FLAG`, contador de `waiters` y `FUTEX_WAKE(1)` | Elimina los despertares perdidos que causaban los máximos de 25–30 µs; **cero syscalls de despertar cuando no hay waiters** |
 | **Evento** | Anillo SPSC de **ranuras en línea** (estilo DPDK): sin pool, sin indirección, un solo acceso por evento | Latencia 690 → **23 ns**; throughput 1,56 → **46,3 M/s** |
 | **Ring SPSC** | Se elimina el contador compartido (`fetch_add`/`fetch_sub` sobre la misma línea) y se cachean los índices por lado | Sin RMW ni *false sharing* por operación |
-| **Reloj** | Reloj de dominio TSC/CNTVCT calibrado una vez contra `CLOCK_MONOTONIC`, con `CHRONOSRT_NO_FAST_CLOCK` como escape | 1 200 → **9 ns** por sello en hosts sin vDSO |
+| **Reloj** | Reloj de dominio TSC/CNTVCT calibrado una vez contra `CLOCK_MONOTONIC`, con `NO_FAST_CLOCK` como escape | 1 200 → **9 ns** por sello en hosts sin vDSO |
 | **Hilos de tick** | Solo se crean si el usuario fija `num_cpus > 0`, nunca en CPUs aisladas, con `stack_size_kb` real y `eventfd` de parada | Sin ruido de 1 kHz en los núcleos del camino caliente; `shutdown` ya no puede colgarse |
 | **ARM** | `cntvct_el0` en lugar de `read(perf_fd)`; CRC de 4 flujos con tablas de salto | CPU: sin syscall por lectura de ciclos; CRC ~3× en SBC |
 | **CRC** | Ruta adaptativa (< 64 B cadena única; 64/128/256/512 B multistream) y verificación contra la referencia en todas las longitudes | 60 B ×3,1 · 552 B ×1,9 · 1504 B ×1,9 |
@@ -649,7 +649,7 @@ acelerado por instrucción en ambas arquitecturas, lo que garantiza el mismo
 resultado en todos los nodos. La única SBC de la matriz sin CRC32 por hardware es
 la **Banana Pi M2 Zero** (Cortex-A7), que cae al *fallback* software.
 
-`ChronosRT_hw_caps()` publica vendor, marca, familia/modelo/stepping y la matriz
+`hw_caps()` publica vendor, marca, familia/modelo/stepping y la matriz
 completa de ISA: SSE4.2, PCLMUL, AVX2, AVX-512 F/VL/BW/DQ, VPCLMULQDQ, GFNI,
 VAES, SHA, AES, BMI2 y ADX.
 
@@ -700,14 +700,14 @@ ctest --test-dir build --output-on-failure
 
 | Opción | Defecto | Descripción |
 | --- | --- | --- |
-| `CHRONOSRT_BUILD_PROTOCOLS` | `ON` | Compila EtherCAT y EtherTux |
-| `CHRONOSRT_BUILD_TESTS` | `ON` | Las 10 suites de `ctest` |
-| `CHRONOSRT_BUILD_BENCHMARK` | `ON` | Ejecutable `chronosrt_bench` |
-| `CHRONOSRT_BUILD_TOOLS` | `ON` | Instala scripts de ayuda |
-| `CHRONOSRT_USE_SIMD` | `ON` | AVX-512 / AVX2 / NEON / SVE |
-| `CHRONOSRT_USE_HUGEPAGES` | `ON` | Soporte de *hugepages* |
-| `CHRONOSRT_ENABLE_LTO` | `ON` | *Link-time optimization* |
-| `CHRONOSRT_ENABLE_NATIVE` | `OFF` | `-march=native` (no portable) |
+| `BUILD_PROTOCOLS` | `ON` | Compila EtherCAT y EtherTux |
+| `BUILD_TESTS` | `ON` | Las 10 suites de `ctest` |
+| `BUILD_BENCHMARK` | `ON` | Ejecutable `bench` |
+| `BUILD_TOOLS` | `ON` | Instala scripts de ayuda |
+| `USE_SIMD` | `ON` | AVX-512 / AVX2 / NEON / SVE |
+| `USE_HUGEPAGES` | `ON` | Soporte de *hugepages* |
+| `ENABLE_LTO` | `ON` | *Link-time optimization* |
+| `ENABLE_NATIVE` | `OFF` | `-march=native` (no portable) |
 | `TUXRT_PROVIDER_MODULE_DIR` | autodetectado | Directorio con `TuxRTProvider.cmake` |
 
 La detección de AVX-512/AVX2 se hace **compilando y ejecutando** una prueba, no
@@ -717,7 +717,6 @@ solo comprobando que el compilador acepta el flag (Zen 2 tiene AVX2 sin AVX-512)
 ./scripts/build.sh --list                       # perfiles SBC
 ./scripts/build.sh --detect                     # detectar la placa
 ./scripts/build.sh --sbc rpi5 --release         # cross-compilar
-./scripts/build.sh --sbc bpi-m2-zero            # ARMv7 sin CRC32 HW
 ./scripts/build.sh --sbc x86-64 --native        # compilación nativa
 ./scripts/build.sh --sbc opi-5 --print-config   # ver flags/cmdline
 ./scripts/build.sh all                          # matriz representativa
@@ -739,16 +738,16 @@ ctest --test-dir build --output-on-failure
 
 | Suite | Aserciones | Cobertura |
 | --- | ---: | --- |
-| `chronosrt_test` | 20 | Ciclo de vida, eventos, métricas y ABI |
-| `chronosrt_test_lockfree` | 26 | Ring SPSC y colas MPMC/bounded |
-| `chronosrt_test_rt` | 30 | Histogramas, WCET, watchdog y `timerfd` |
-| `chronosrt_test_resilience` | 29 | Snapshot A/B, WAL y Golden Image |
-| `chronosrt_test_integration` | 27 | Puente con *sink* y descriptor de proveedor |
-| `chronosrt_test_network` | 58 | EtherCAT (tramas, WKC, ESM, SDO) y selección |
-| `chronosrt_test_hwaccel` | 40 | CRC-32C, GF(2^8) y Reed-Solomon |
-| `chronosrt_test_ethertux` | 103 | Tramas, FEC, QoS/LAPM, planificador y maestro |
-| `chronosrt_test_ethertux_v010` | 152 | Cabecera v0.1.0, ET-ESM, ET-Sync, ET-WKC, ET-MBX, Flow Aggregator y FRM |
-| `chronosrt_test_aalid` | 62 | ID local: MAC LAA, candidato, backoff, admisión, colisiones, clonado, expiración y persistencia |
+| `test` | 20 | Ciclo de vida, eventos, métricas y ABI |
+| `test_lockfree` | 26 | Ring SPSC y colas MPMC/bounded |
+| `test_rt` | 30 | Histogramas, WCET, watchdog y `timerfd` |
+| `test_resilience` | 29 | Snapshot A/B, WAL y Golden Image |
+| `test_integration` | 27 | Puente con *sink* y descriptor de proveedor |
+| `test_network` | 58 | EtherCAT (tramas, WKC, ESM, SDO) y selección |
+| `test_hwaccel` | 40 | CRC-32C, GF(2^8) y Reed-Solomon |
+| `test_ethertux` | 103 | Tramas, FEC, QoS/LAPM, planificador y maestro |
+| `test_ethertux_v010` | 152 | Cabecera v0.1.0, ET-ESM, ET-Sync, ET-WKC, ET-MBX, Flow Aggregator y FRM |
+| `test_aalid` | 62 | ID local: MAC LAA, candidato, backoff, admisión, colisiones, clonado, expiración y persistencia |
 | **Total** | **547** | **10/10 suites** |
 
 `test_runner.sh` añade una auditoría del entorno adaptada al perfil de la placa
@@ -760,14 +759,14 @@ ctest --test-dir build --output-on-failure
 ## Benchmark
 
 ```bash
-./build/chronosrt_bench --mode latency    --duration 60
-./build/chronosrt_bench --mode throughput --threads 8
-./build/chronosrt_bench --mode jitter     --platform rpi5
-./build/chronosrt_bench --mode stress     --duration 30
-./build/chronosrt_bench --mode wcet
-./build/chronosrt_bench --mode frame      # coste por trama
-./build/chronosrt_bench --mode crc        # CRC-32C por backend
-./build/chronosrt_bench --mode aalid      # ID local (MAC LAA)
+./build/bench --mode latency    --duration 60
+./build/bench --mode throughput --threads 8
+./build/bench --mode jitter     --platform rpi5
+./build/bench --mode stress     --duration 30
+./build/bench --mode wcet
+./build/bench --mode frame      # coste por trama
+./build/bench --mode crc        # CRC-32C por backend
+./build/bench --mode aalid      # ID local (MAC LAA)
 ```
 
 Opciones: `--pool-size N`, `--hugepages`, `--no-simd`, `--no-affinity`,
@@ -790,47 +789,47 @@ Metodología y criterios: [BENCHMARKING.md](docs/BENCHMARKING.md).
 <summary><strong>Ver código C completo</strong></summary>
 
 ```c
-#include <chronosrt/chronosrt.h>
-#include <chronosrt/chronosrt_kernel.h>
-#include <chronosrt/chronosrt_protocol.h>
-#include <chronosrt/chronosrt_ethertux.h>
+#include <libtuxwarp/libtuxwarp.h>
+#include <libtuxwarp/kernel.h>
+#include <libtuxwarp/protocol.h>
+#include <libtuxwarp/ethertux.h>
 
 #include <stdio.h>
 
 int main(void) {
-    ChronosRT_kernel_info_t kinfo;
-    if (ChronosRT_kernel_probe(&kinfo) == ChronosRT_SUCCESS) {
-        ChronosRT_kernel_print(&kinfo);          /* soporte 0..3 */
+    kernel_info_t kinfo;
+    if (kernel_probe(&kinfo) == SUCCESS) {
+        kernel_print(&kinfo);          /* soporte 0..3 */
     }
 
-    ChronosRT_config_t cfg = {0};
+    config_t cfg = {0};
     cfg.num_cpus        = 2;
     cfg.event_pool_size = 65536;
     cfg.lock_memory     = true;   /* mlockall + prefault      */
     cfg.use_deadline    = true;   /* SCHED_DEADLINE si existe */
     cfg.use_timerfd     = true;   /* tick sin usleep          */
 
-    ChronosRT_handle_t rt;
-    if (ChronosRT_init(&rt, &cfg) != ChronosRT_SUCCESS) {
+    handle_t rt;
+    if (init(&rt, &cfg) != SUCCESS) {
         return 1;
     }
 
-    if (ChronosRT_protocol_from_env() == ChronosRT_PROTOCOL_ETHERTUX) {
+    if (protocol_from_env() == PROTOCOL_ETHERTUX) {
         /* Nombre real de la interfaz: `ip -br link` (p. ej. enp2s0, end0). */
-        ChronosRT_et_master_t* et = ChronosRT_et_master_create();
-        if (et && ChronosRT_et_master_open(et, "enp2s0") == ChronosRT_SUCCESS) {
-            (void)ChronosRT_et_master_send(et, ChronosRT_ET_P1,
-                                           ChronosRT_ET_TYPE_DATA, 1u,
+        et_master_t* et = et_master_create();
+        if (et && et_master_open(et, "enp2s0") == SUCCESS) {
+            (void)et_master_send(et, ET_P1,
+                                           ET_TYPE_DATA, 1u,
                                            "hola", 4u);
         }
-        ChronosRT_et_master_destroy(et);
+        et_master_destroy(et);
     }
 
-    ChronosRT_metrics_t metrics;
-    (void)ChronosRT_benchmark_run(rt, ChronosRT_MODE_LATENCY, 10u, &metrics);
-    (void)ChronosRT_metrics_report(&metrics);
+    metrics_t metrics;
+    (void)benchmark_run(rt, MODE_LATENCY, 10u, &metrics);
+    (void)metrics_report(&metrics);
 
-    ChronosRT_shutdown(rt);
+    shutdown(rt);
     return 0;
 }
 ```
@@ -838,7 +837,7 @@ int main(void) {
 Compilación:
 
 ```bash
-cc app.c -I/usr/local/include -lchronosrt -lpthread -lm -ldl
+cc app.c -I/usr/local/include -llibtuxwarp -lpthread -lm -ldl
 ```
 
 Referencia completa: [API.md](docs/API.md).
@@ -855,14 +854,14 @@ Referencia completa: [API.md](docs/API.md).
 └────────────┬─────────────┘
              │ dlopen + dlsym (consumidor → proveedor)
 ┌────────────▼─────────────┐
-│  ChronosRT (ChronosRT_*) │  tiempo real + EtherCAT / EtherTux
+│  libtuxwarp (*) │  tiempo real + EtherCAT / EtherTux
 └──────────────────────────┘
 ```
 
-- Espacios de nombres **disjuntos** (`ChronosRT_*` frente a `tuxrt_*`): pueden
+- Espacios de nombres **disjuntos** (`*` frente a `tuxrt_*`): pueden
   convivir y enlazarse en el mismo proceso sin colisión.
-- ChronosRT **no** conoce `tuxrt_*`: expone un *sink* genérico
-  (`ChronosRT_bridge_attach` / `ChronosRT_bridge_pump`) y su descriptor de
+- libtuxwarp **no** conoce `tuxrt_*`: expone un *sink* genérico
+  (`bridge_attach` / `bridge_pump`) y su descriptor de
   proveedor. El consumidor decide qué hacer con los eventos.
 
 ---
@@ -870,7 +869,7 @@ Referencia completa: [API.md](docs/API.md).
 ## Seguridad
 
 > [!WARNING]
-> ChronosRT **no implementa cifrado, autenticación ni control de acceso**.
+> libtuxwarp **no implementa cifrado, autenticación ni control de acceso**.
 > CRC-32C y WKC detectan corrupción accidental, **no** son mecanismos de
 > seguridad. No use EtherTux sobre una red no confiable sin aislamiento físico,
 > IPsec o MACsec.
@@ -896,8 +895,8 @@ Detalle: [MANUAL_TECNICO.md §10](docs/MANUAL_TECNICO.md).
 3. IRQ de la interfaz Ethernet fijadas a los núcleos aislados.
 4. `CAP_NET_RAW` (o `CAP_NET_ADMIN`) para `AF_PACKET`, y el **nombre real** de
    la interfaz (`ip -br link`: `enp2s0`, `eno1`, `end0`, `enx<MAC>`…).
-5. Protocolo elegido en el arranque: `CHRONOSRT_PROTOCOL=ethercat|ethertux`.
-6. Verificar con `ChronosRT_kernel_probe()` → `support_level >= 2`.
+5. Protocolo elegido en el arranque: `PROTOCOL=ethercat|ethertux`.
+6. Verificar con `kernel_probe()` → `support_level >= 2`.
 
 ---
 
@@ -927,13 +926,13 @@ Detalle: [MANUAL_TECNICO.md §10](docs/MANUAL_TECNICO.md).
    cmake --build build -j"$(nproc)"
    ctest --test-dir build --output-on-failure
    ```
-3. Mantenga la **API plana y estable** (`include/chronosrt/`) y añada tests para
+3. Mantenga la **API plana y estable** (`include/libtuxwarp/`) y añada tests para
    cada comportamiento nuevo.
 4. No introduzca dependencias externas en el camino crítico.
 5. Abra un *pull request* describiendo el cambio y la evidencia de verificación.
 
 Incidencias y propuestas:
-[GitHub Issues](https://github.com/LauOtero/ChronosRT_MASTER/issues).
+[GitHub Issues](https://github.com/LauOtero/libtuxwarp/issues).
 
 ---
 

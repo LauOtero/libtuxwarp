@@ -64,12 +64,12 @@ static void ec_put32(uint8_t* p, uint32_t v) {
 /* Transporte de buzón                                                 */
 /* ------------------------------------------------------------------ */
 
-int ec_mbx_send(ChronosRT_ec_master_t* master, int slave, const uint8_t* mbx, uint16_t len) {
+int ec_mbx_send(ec_master_t* master, int slave, const uint8_t* mbx, uint16_t len) {
     if (!master || slave < 1 || slave > master->slave_count || !mbx ||
-        len < EC_MBX_HDR_LEN || len > ChronosRT_EC_MAX_MAILBOX) {
+        len < EC_MBX_HDR_LEN || len > EC_MAX_MAILBOX) {
         return -1;
     }
-    ec_slave_t* s = &master->slaves[slave];
+    ec_slave_internal_t* s = &master->slaves[slave];
     if (s->cfg.mbx_wr == 0u) {
         return -1;
     }
@@ -79,7 +79,7 @@ int ec_mbx_send(ChronosRT_ec_master_t* master, int slave, const uint8_t* mbx, ui
     uint64_t deadline = ec_now_us() + EC_TIMEOUT_MBX;
     for (;;) {
         uint8_t st = 0;
-        if (ChronosRT_ec_master_read_reg(master, (uint16_t)slave, sm0_status, &st, 1) == 1 &&
+        if (ec_master_read_reg(master, (uint16_t)slave, sm0_status, &st, 1) == 1 &&
             (st & EC_SM_STATUS_FULL) == 0u) {
             break;
         }
@@ -88,24 +88,24 @@ int ec_mbx_send(ChronosRT_ec_master_t* master, int slave, const uint8_t* mbx, ui
         }
     }
 
-    return (ChronosRT_ec_master_fp_write(master, s->pub.config_addr, s->cfg.mbx_wr,
+    return (ec_master_fp_write(master, s->pub.config_addr, s->cfg.mbx_wr,
                                          mbx, len) == (int)len)
                ? 0 : -1;
 }
 
-int ec_mbx_receive(ChronosRT_ec_master_t* master, int slave,
+int ec_mbx_receive(ec_master_t* master, int slave,
                    uint8_t* mbx, uint16_t bufsize, uint32_t timeout_us) {
     if (!master || slave < 1 || slave > master->slave_count || !mbx ||
         bufsize < EC_MBX_HDR_LEN) {
         return -1;
     }
-    ec_slave_t* s = &master->slaves[slave];
+    ec_slave_internal_t* s = &master->slaves[slave];
     if (s->cfg.mbx_rr == 0u) {
         return -1;
     }
 
     uint16_t sm1_status = (uint16_t)(EC_REG_SM0 + EC_SM_LEN + EC_SM_STATUS_OFF);
-    uint16_t read_len = (s->cfg.mbx_rl != 0u) ? s->cfg.mbx_rl : ChronosRT_EC_MAX_MAILBOX;
+    uint16_t read_len = (s->cfg.mbx_rl != 0u) ? s->cfg.mbx_rl : EC_MAX_MAILBOX;
     if (read_len > bufsize) {
         read_len = bufsize;
     }
@@ -113,9 +113,9 @@ int ec_mbx_receive(ChronosRT_ec_master_t* master, int slave,
     uint64_t deadline = ec_now_us() + (uint64_t)timeout_us;
     for (;;) {
         uint8_t st = 0;
-        if (ChronosRT_ec_master_read_reg(master, (uint16_t)slave, sm1_status, &st, 1) == 1 &&
+        if (ec_master_read_reg(master, (uint16_t)slave, sm1_status, &st, 1) == 1 &&
             (st & EC_SM_STATUS_FULL) != 0u) {
-            if (ChronosRT_ec_master_fp_read(master, s->pub.config_addr, s->cfg.mbx_rr,
+            if (ec_master_fp_read(master, s->pub.config_addr, s->cfg.mbx_rr,
                                             mbx, read_len) < 0) {
                 return -1;
             }
@@ -136,11 +136,11 @@ int ec_mbx_receive(ChronosRT_ec_master_t* master, int slave,
 /* ------------------------------------------------------------------ */
 
 /* Envía una petición CoE/SDO y devuelve la respuesta en `resp`. */
-static int ec_sdo_transaction(ChronosRT_ec_master_t* master, int slave,
+static int ec_sdo_transaction(ec_master_t* master, int slave,
                               uint8_t service, uint16_t index, uint8_t subindex,
                               uint8_t flags, const uint8_t* data, uint16_t data_len,
                               uint8_t* resp, uint16_t resp_size, uint32_t timeout_us) {
-    uint8_t req[ChronosRT_EC_MAX_MAILBOX];
+    uint8_t req[EC_MAX_MAILBOX];
     memset(req, 0, sizeof(req));
 
     uint16_t sdo_len = 3u + data_len;           /* index + subindex + flags + datos */
@@ -171,29 +171,29 @@ static int ec_sdo_transaction(ChronosRT_ec_master_t* master, int slave,
     return 0;
 }
 
-ChronosRT_status_t ChronosRT_ec_master_sdo_read(ChronosRT_ec_master_t* master,
+status_t ec_master_sdo_read(ec_master_t* master,
                                                 uint32_t slave_index,
                                                 uint16_t index, uint8_t subindex,
                                                 void* out, uint32_t* size,
                                                 uint32_t timeout_us) {
     if (!master || !out || !size || slave_index < 1u ||
         slave_index > (uint32_t)master->slave_count) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     int slave = (int)slave_index;
-    uint8_t resp[ChronosRT_EC_MAX_MAILBOX];
+    uint8_t resp[EC_MAX_MAILBOX];
     uint32_t cap = *size;
 
     if (ec_sdo_transaction(master, slave, EC_SDO_UP_REQ, index, subindex, 0u,
                            NULL, 0u, resp, sizeof(resp), timeout_us) < 0) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
     uint8_t svc = resp[EC_MBX_OFF_SVC];
     if ((svc & 0xE0u) == EC_SDO_ABORT) {
-        return ChronosRT_ERROR_CORRUPT;
+        return ERROR_CORRUPT;
     }
     if ((svc & 0x0Fu) != EC_COE_SDORES) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     uint8_t flg = resp[EC_MBX_OFF_FLG];
@@ -207,7 +207,7 @@ ChronosRT_status_t ChronosRT_ec_master_sdo_read(ChronosRT_ec_master_t* master,
         }
         memcpy(out, resp + EC_MBX_OFF_DATA, total);
         *size = total;
-        return ChronosRT_SUCCESS;
+        return SUCCESS;
     }
 
     if ((flg & EC_SDO_FLAG_SIZE) != 0u) {
@@ -222,7 +222,7 @@ ChronosRT_status_t ChronosRT_ec_master_sdo_read(ChronosRT_ec_master_t* master,
         copied = (total > cap) ? cap : total;
         memcpy(out, resp + (EC_MBX_OFF_DATA + 4u), copied);
         *size = copied;
-        return ChronosRT_SUCCESS;
+        return SUCCESS;
     }
 
     /* Transferencia segmentada. */
@@ -231,7 +231,7 @@ ChronosRT_status_t ChronosRT_ec_master_sdo_read(ChronosRT_ec_master_t* master,
         uint8_t sflg = (uint8_t)(EC_SDO_SEG_UP | (toggle ? EC_SDO_SEG_TOGGLE : 0u));
         if (ec_sdo_transaction(master, slave, EC_SDO_UP_SEG_REQ, index, subindex,
                                sflg, NULL, 0u, resp, sizeof(resp), timeout_us) < 0) {
-            return ChronosRT_ERROR_IO;
+            return ERROR_IO;
         }
         uint8_t rsvc = resp[EC_MBX_OFF_SVC];
         if ((rsvc & (EC_SDO_SEG_MORE | EC_SDO_SEG_TOGGLE)) == EC_SDO_SEG_MORE) {
@@ -253,25 +253,25 @@ ChronosRT_status_t ChronosRT_ec_master_sdo_read(ChronosRT_ec_master_t* master,
     }
 
     *size = copied;
-    return (copied == total) ? ChronosRT_SUCCESS : ChronosRT_ERROR_IO;
+    return (copied == total) ? SUCCESS : ERROR_IO;
 }
 
 /* ------------------------------------------------------------------ */
 /* CoE: escritura (download)                                           */
 /* ------------------------------------------------------------------ */
 
-ChronosRT_status_t ChronosRT_ec_master_sdo_write(ChronosRT_ec_master_t* master,
+status_t ec_master_sdo_write(ec_master_t* master,
                                                  uint32_t slave_index,
                                                  uint16_t index, uint8_t subindex,
                                                  const void* in, uint32_t size,
                                                  uint32_t timeout_us) {
     if (!master || !in || slave_index < 1u ||
         slave_index > (uint32_t)master->slave_count) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     int slave = (int)slave_index;
     const uint8_t* src = (const uint8_t*)in;
-    uint8_t resp[ChronosRT_EC_MAX_MAILBOX];
+    uint8_t resp[EC_MAX_MAILBOX];
 
     uint8_t service;
     uint8_t flags;
@@ -296,13 +296,13 @@ ChronosRT_status_t ChronosRT_ec_master_sdo_write(ChronosRT_ec_master_t* master,
 
     if (ec_sdo_transaction(master, slave, service, index, subindex, flags,
                            first, (uint16_t)first_len, resp, sizeof(resp), timeout_us) < 0) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
     if ((resp[EC_MBX_OFF_SVC] & 0xE0u) == EC_SDO_ABORT) {
-        return ChronosRT_ERROR_CORRUPT;
+        return ERROR_CORRUPT;
     }
     if (size <= 4u) {
-        return ChronosRT_SUCCESS;
+        return SUCCESS;
     }
 
     /* Secuencia de segmentos. */
@@ -323,10 +323,10 @@ ChronosRT_status_t ChronosRT_ec_master_sdo_write(ChronosRT_ec_master_t* master,
                                  (toggle ? EC_SDO_SEG_TOGGLE : 0u));
         if (ec_sdo_transaction(master, slave, EC_SDO_SEG_DOWN, index, subindex,
                                sflg, seg, 7u, resp, sizeof(resp), timeout_us) < 0) {
-            return ChronosRT_ERROR_IO;
+            return ERROR_IO;
         }
         sent += chunk;
         toggle ^= 1u;
     }
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }

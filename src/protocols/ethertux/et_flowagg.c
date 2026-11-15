@@ -25,26 +25,26 @@ static inline uint16_t get_le16(const uint8_t* p) {
     return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
 }
 
-ChronosRT_status_t ChronosRT_et_flowagg_build(const ChronosRT_et_flow_entry_t* entries,
+status_t et_flowagg_build(const et_flow_entry_t* entries,
                                               uint32_t count,
                                               uint8_t* out, uint32_t out_size,
                                               uint32_t* out_len) {
     if (entries == NULL || out == NULL || out_len == NULL ||
         count == 0u || count > UINT8_MAX) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     uint32_t total = 0u;
     for (uint32_t i = 0; i < count; i++) {
         if (entries[i].flow_id == 0u) {
-            return ChronosRT_ERROR_INVALID;
+            return ERROR_INVALID;
         }
         if (entries[i].data == NULL && entries[i].len > 0u) {
-            return ChronosRT_ERROR_INVALID;
+            return ERROR_INVALID;
         }
         total += ET_AGG_ENTRY_HEADER + (uint32_t)entries[i].len;
         if (total > out_size) {
-            return ChronosRT_ERROR_FULL;
+            return ERROR_FULL;
         }
     }
 
@@ -59,31 +59,31 @@ ChronosRT_status_t ChronosRT_et_flowagg_build(const ChronosRT_et_flow_entry_t* e
         }
     }
     *out_len = off;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_flowagg_parse(const uint8_t* in, uint32_t len,
-                                              ChronosRT_et_flow_entry_t* views,
+status_t et_flowagg_parse(const uint8_t* in, uint32_t len,
+                                              et_flow_entry_t* views,
                                               uint32_t max_views, uint32_t* out_count) {
     if (in == NULL || views == NULL || out_count == NULL || max_views == 0u) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     uint32_t off = 0u;
     uint32_t n = 0u;
     while (off < len) {
         if (len - off < ET_AGG_ENTRY_HEADER) {
-            return ChronosRT_ERROR_CORRUPT;     /* entrada truncada */
+            return ERROR_CORRUPT;     /* entrada truncada */
         }
         uint8_t flow_id = in[off];
         uint16_t flen = get_le16(in + off + 1u);
         off += ET_AGG_ENTRY_HEADER;
 
         if (flow_id == 0u || (uint32_t)flen > (len - off)) {
-            return ChronosRT_ERROR_CORRUPT;
+            return ERROR_CORRUPT;
         }
         if (n >= max_views) {
-            return ChronosRT_ERROR_FULL;
+            return ERROR_FULL;
         }
         views[n].flow_id = flow_id;
         views[n].len = flen;
@@ -93,15 +93,15 @@ ChronosRT_status_t ChronosRT_et_flowagg_parse(const uint8_t* in, uint32_t len,
     }
 
     *out_count = n;
-    return (n > 0u) ? ChronosRT_SUCCESS : ChronosRT_ERROR_CORRUPT;
+    return (n > 0u) ? SUCCESS : ERROR_CORRUPT;
 }
 
-uint32_t ChronosRT_et_flowagg_saved_bytes(uint32_t count, uint32_t data_bytes) {
+uint32_t et_flowagg_saved_bytes(uint32_t count, uint32_t data_bytes) {
     (void)data_bytes;   /* los datos no cambian; solo la cabecera */
     if (count < 2u) {
         return 0u;
     }
-    const uint32_t per_frame = ChronosRT_ET_ETH_HDR_SIZE + ChronosRT_ET_HEADER_SIZE;
+    const uint32_t per_frame = ET_ETH_HDR_SIZE + ET_HEADER_SIZE;
     uint32_t without = count * per_frame;
     uint32_t with = per_frame + count * ET_AGG_ENTRY_HEADER;
     return (without > with) ? (without - with) : 0u;

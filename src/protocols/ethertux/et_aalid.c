@@ -3,7 +3,7 @@
  *
  * El esquema tiene DOS niveles con responsabilidades separadas:
  *
- *   Nivel 1 (camino crítico, receptor): `ChronosRT_et_aalid_candidate()` deriva
+ *   Nivel 1 (camino crítico, receptor): `et_aalid_candidate()` deriva
  *   un ID de 16 bits de la MAC con CRC-32C y plegado XOR. Es una función sin
  *   ramas ni bucles, de coste constante, que sirve como FILTRO de recepción.
  *   No garantiza unicidad: con 16 bits, la paradoja del cumpleaños hace que
@@ -48,8 +48,8 @@ typedef struct {
     uint64_t last_hb_ms;
 } et_aalid_entry_t;
 
-struct ChronosRT_et_aalid {
-    ChronosRT_et_aalid_config_t cfg;
+struct et_aalid {
+    et_aalid_config_t cfg;
     et_aalid_entry_t*           table;    /* hash abierto {MAC -> ID}       */
     uint32_t                    mask;     /* table_slots - 1                */
     uint8_t*                    bitmap;   /* IDs ocupados (1 bit por ID)    */
@@ -57,14 +57,14 @@ struct ChronosRT_et_aalid {
     uint32_t                    id_count; /* id_max + 1                     */
     uint16_t                    next_free_hint;
     uint32_t                    occupied;
-    ChronosRT_et_aalid_stats_t  stats;
+    et_aalid_stats_t  stats;
 };
 
 /* ------------------------------------------------------------------ */
 /* MAC local (LAA)                                                     */
 /* ------------------------------------------------------------------ */
 
-uint32_t ChronosRT_et_aalid_mac(uint16_t id, uint8_t out[6]) {
+uint32_t et_aalid_mac(uint16_t id, uint8_t out[6]) {
     if (out == NULL) {
         return 0u;
     }
@@ -77,12 +77,12 @@ uint32_t ChronosRT_et_aalid_mac(uint16_t id, uint8_t out[6]) {
     return 6u;
 }
 
-uint16_t ChronosRT_et_aalid_id_from_mac(const uint8_t mac[6]) {
+uint16_t et_aalid_id_from_mac(const uint8_t mac[6]) {
     if (mac == NULL) {
-        return ChronosRT_ET_LOCAL_ID_NONE;
+        return ET_LOCAL_ID_NONE;
     }
     if (mac[0] != 0x02u || mac[1] != 0x00u || mac[2] != 0x00u || mac[3] != 0x00u) {
-        return ChronosRT_ET_LOCAL_ID_NONE;
+        return ET_LOCAL_ID_NONE;
     }
     return (uint16_t)(((uint16_t)mac[4] << 8) | (uint16_t)mac[5]);
 }
@@ -91,30 +91,30 @@ uint16_t ChronosRT_et_aalid_id_from_mac(const uint8_t mac[6]) {
 /* Nivel 1: ID candidato (camino crítico)                              */
 /* ------------------------------------------------------------------ */
 
-uint16_t ChronosRT_et_aalid_candidate(const uint8_t mac[6]) {
+uint16_t et_aalid_candidate(const uint8_t mac[6]) {
     if (mac == NULL) {
-        return ChronosRT_ET_LOCAL_ID_NONE;
+        return ET_LOCAL_ID_NONE;
     }
     /* CRC-32C por la HAL (instrucción si existe) y plegado XOR de las mitades:
      * la truncación simple descartaría la mitad alta del hash. */
-    const uint32_t crc = ChronosRT_crc32c_raw(0xFFFFFFFFu, mac, 6u);
+    const uint32_t crc = crc32c_raw(0xFFFFFFFFu, mac, 6u);
     return (uint16_t)(crc ^ (crc >> 16));
 }
 
-uint16_t ChronosRT_et_aalid_candidate_mul(const uint8_t mac[6]) {
+uint16_t et_aalid_candidate_mul(const uint8_t mac[6]) {
     if (mac == NULL) {
-        return ChronosRT_ET_LOCAL_ID_NONE;
+        return ET_LOCAL_ID_NONE;
     }
     uint64_t x = 0u;
     memcpy(&x, mac, 6u);   /* los dos bytes altos quedan a cero */
     return (uint16_t)((x * 0x9E3779B97F4A7C15ull) >> 48);
 }
 
-uint32_t ChronosRT_et_aalid_backoff_slots(const uint8_t mac[6], uint32_t slots) {
+uint32_t et_aalid_backoff_slots(const uint8_t mac[6], uint32_t slots) {
     if (mac == NULL || slots == 0u) {
         return 0u;
     }
-    const uint32_t h = (uint32_t)ChronosRT_et_aalid_candidate(mac);
+    const uint32_t h = (uint32_t)et_aalid_candidate(mac);
     if ((slots & (slots - 1u)) == 0u) {
         return h & (slots - 1u);       /* potencia de 2: máscara */
     }
@@ -142,7 +142,7 @@ static inline void bm_clear(uint8_t* bm, uint16_t id) {
  * caso típico (asignaciones correlativas) baste una iteración; el peor caso
  * está acotado por el número de bytes del bitmap.
  */
-static uint16_t et_aalid_find_free(const ChronosRT_et_aalid_t* a, uint16_t start) {
+static uint16_t et_aalid_find_free(const et_aalid_t* a, uint16_t start) {
     const uint32_t limit = a->cfg.id_max;
     const uint32_t from = ((uint32_t)start > limit) ? 0u : (uint32_t)start;
     const uint32_t first_byte = from >> 3;
@@ -164,31 +164,31 @@ static uint16_t et_aalid_find_free(const ChronosRT_et_aalid_t* a, uint16_t start
             }
             const uint32_t id = (i << 3) + (uint32_t)__builtin_ctz((unsigned)inv);
             /* Descarta los bits de relleno del último byte. */
-            return (id > limit) ? ChronosRT_ET_LOCAL_ID_NONE : (uint16_t)id;
+            return (id > limit) ? ET_LOCAL_ID_NONE : (uint16_t)id;
         }
     }
-    return ChronosRT_ET_LOCAL_ID_NONE;
+    return ET_LOCAL_ID_NONE;
 }
 
 /* ------------------------------------------------------------------ */
 /* Ciclo de vida                                                       */
 /* ------------------------------------------------------------------ */
 
-void ChronosRT_et_aalid_default_config(ChronosRT_et_aalid_config_t* cfg) {
+void et_aalid_default_config(et_aalid_config_t* cfg) {
     if (cfg == NULL) {
         return;
     }
-    cfg->id_max      = (uint16_t)ChronosRT_ET_LOCAL_ID_MAX;
+    cfg->id_max      = (uint16_t)ET_LOCAL_ID_MAX;
     cfg->grace_ms    = 600000u;   /* 10 min sin heartbeat */
     cfg->table_slots = 256u;
 }
 
-ChronosRT_et_aalid_t* ChronosRT_et_aalid_create(const ChronosRT_et_aalid_config_t* cfg) {
-    ChronosRT_et_aalid_config_t c;
+et_aalid_t* et_aalid_create(const et_aalid_config_t* cfg) {
+    et_aalid_config_t c;
     if (cfg != NULL) {
         c = *cfg;
     } else {
-        ChronosRT_et_aalid_default_config(&c);
+        et_aalid_default_config(&c);
     }
 
     uint32_t slots = c.table_slots;
@@ -208,7 +208,7 @@ ChronosRT_et_aalid_t* ChronosRT_et_aalid_create(const ChronosRT_et_aalid_config_
     }
     slots = p2;
 
-    ChronosRT_et_aalid_t* a = (ChronosRT_et_aalid_t*)calloc(1u, sizeof(*a));
+    et_aalid_t* a = (et_aalid_t*)calloc(1u, sizeof(*a));
     if (a == NULL) {
         return NULL;
     }
@@ -216,7 +216,7 @@ ChronosRT_et_aalid_t* ChronosRT_et_aalid_create(const ChronosRT_et_aalid_config_
     a->cfg = c;
     a->cfg.table_slots = slots;
     if (a->cfg.id_max == 0u) {
-        a->cfg.id_max = (uint16_t)ChronosRT_ET_LOCAL_ID_MAX;
+        a->cfg.id_max = (uint16_t)ET_LOCAL_ID_MAX;
     }
 
     a->mask = slots - 1u;
@@ -237,7 +237,7 @@ ChronosRT_et_aalid_t* ChronosRT_et_aalid_create(const ChronosRT_et_aalid_config_
     return a;
 }
 
-void ChronosRT_et_aalid_destroy(ChronosRT_et_aalid_t* aalid) {
+void et_aalid_destroy(et_aalid_t* aalid) {
     if (aalid == NULL) {
         return;
     }
@@ -250,7 +250,7 @@ void ChronosRT_et_aalid_destroy(ChronosRT_et_aalid_t* aalid) {
 /* Nivel 2: admisión determinista                                      */
 /* ------------------------------------------------------------------ */
 
-static void et_aalid_insert(ChronosRT_et_aalid_t* a, uint32_t idx, const uint8_t mac[6],
+static void et_aalid_insert(et_aalid_t* a, uint32_t idx, const uint8_t mac[6],
                             uint16_t id, uint32_t nonce, uint64_t now_ms) {
     et_aalid_entry_t* e = &a->table[idx];
     memcpy(e->mac, mac, 6u);
@@ -260,20 +260,20 @@ static void et_aalid_insert(ChronosRT_et_aalid_t* a, uint32_t idx, const uint8_t
     e->last_hb_ms = now_ms;
 }
 
-ChronosRT_status_t ChronosRT_et_aalid_admit(ChronosRT_et_aalid_t* aalid,
+status_t et_aalid_admit(et_aalid_t* aalid,
                                             const uint8_t mac[6],
                                             uint32_t nonce,
                                             uint64_t now_ms,
                                             uint16_t* out_id,
-                                            ChronosRT_et_aalid_result_t* out_result) {
+                                            et_aalid_result_t* out_result) {
     if (out_result != NULL) {
-        *out_result = ChronosRT_ET_AALID_INVALID;
+        *out_result = ET_AALID_INVALID;
     }
     if (aalid == NULL || mac == NULL || out_id == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
-    const uint32_t h0 = (uint32_t)ChronosRT_et_aalid_candidate(mac) & aalid->mask;
+    const uint32_t h0 = (uint32_t)et_aalid_candidate(mac) & aalid->mask;
     int32_t tomb = -1;
 
     for (uint32_t probe = 0; probe <= aalid->mask; probe++) {
@@ -286,17 +286,17 @@ ChronosRT_status_t ChronosRT_et_aalid_admit(ChronosRT_et_aalid_t* aalid,
                     /* Misma MAC y distinto nonce: identidad clonada. */
                     aalid->stats.clone_mac++;
                     if (out_result != NULL) {
-                        *out_result = ChronosRT_ET_AALID_CLONE;
+                        *out_result = ET_AALID_CLONE;
                     }
-                    return ChronosRT_ERROR_STATE;
+                    return ERROR_STATE;
                 }
                 e->last_hb_ms = now_ms;
                 aalid->stats.duplicates++;
                 *out_id = e->id;
                 if (out_result != NULL) {
-                    *out_result = ChronosRT_ET_AALID_DUPLICATE;
+                    *out_result = ET_AALID_DUPLICATE;
                 }
-                return ChronosRT_SUCCESS;
+                return SUCCESS;
             }
         } else if (e->state == ET_AALID_TOMB && tomb < 0) {
             tomb = (int32_t)idx;
@@ -306,8 +306,8 @@ ChronosRT_status_t ChronosRT_et_aalid_admit(ChronosRT_et_aalid_t* aalid,
     }
 
     /* ID final: candidato si está libre; si no, cursor secuencial determinista. */
-    const uint16_t cand = ChronosRT_et_aalid_candidate(mac);
-    uint16_t id = ChronosRT_ET_LOCAL_ID_NONE;
+    const uint16_t cand = et_aalid_candidate(mac);
+    uint16_t id = ET_LOCAL_ID_NONE;
     bool collision = false;
 
     if ((uint32_t)cand <= aalid->cfg.id_max && !bm_test(aalid->bitmap, cand)) {
@@ -316,11 +316,11 @@ ChronosRT_status_t ChronosRT_et_aalid_admit(ChronosRT_et_aalid_t* aalid,
         id = et_aalid_find_free(aalid, aalid->next_free_hint);
         collision = true;
     }
-    if (id == ChronosRT_ET_LOCAL_ID_NONE) {
+    if (id == ET_LOCAL_ID_NONE) {
         if (out_result != NULL) {
-            *out_result = ChronosRT_ET_AALID_FULL;
+            *out_result = ET_AALID_FULL;
         }
-        return ChronosRT_ERROR_FULL;
+        return ERROR_FULL;
     }
 
     uint32_t slot = 0u;
@@ -346,18 +346,18 @@ ChronosRT_status_t ChronosRT_et_aalid_admit(ChronosRT_et_aalid_t* aalid,
         aalid->stats.collisions++;
     }
     if (out_result != NULL) {
-        *out_result = collision ? ChronosRT_ET_AALID_COLLISION : ChronosRT_ET_AALID_OK;
+        *out_result = collision ? ET_AALID_COLLISION : ET_AALID_OK;
     }
     *out_id = id;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_aalid_release(ChronosRT_et_aalid_t* aalid, uint16_t id) {
+status_t et_aalid_release(et_aalid_t* aalid, uint16_t id) {
     if (aalid == NULL || id > aalid->cfg.id_max) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (!bm_test(aalid->bitmap, id)) {
-        return ChronosRT_ERROR_NOTFOUND;
+        return ERROR_NOTFOUND;
     }
     /* Libera la entrada {MAC -> ID}: el sondeo lineal tolera tombstones. */
     for (uint32_t i = 0; i <= aalid->mask; i++) {
@@ -373,44 +373,44 @@ ChronosRT_status_t ChronosRT_et_aalid_release(ChronosRT_et_aalid_t* aalid, uint1
     if ((uint32_t)id < (uint32_t)aalid->next_free_hint) {
         aalid->next_free_hint = id;   /* reutiliza el hueco cuanto antes */
     }
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_aalid_lookup(const ChronosRT_et_aalid_t* aalid,
+status_t et_aalid_lookup(const et_aalid_t* aalid,
                                              const uint8_t mac[6], uint16_t* out_id) {
     if (aalid == NULL || mac == NULL || out_id == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
-    const uint32_t h0 = (uint32_t)ChronosRT_et_aalid_candidate(mac) & aalid->mask;
+    const uint32_t h0 = (uint32_t)et_aalid_candidate(mac) & aalid->mask;
     for (uint32_t probe = 0; probe <= aalid->mask; probe++) {
         const et_aalid_entry_t* e = &aalid->table[(h0 + probe) & aalid->mask];
         if (e->state == ET_AALID_FREE) {
-            return ChronosRT_ERROR_NOTFOUND;
+            return ERROR_NOTFOUND;
         }
         if (e->state == ET_AALID_ACTIVE && memcmp(e->mac, mac, 6u) == 0) {
             *out_id = e->id;
-            return ChronosRT_SUCCESS;
+            return SUCCESS;
         }
     }
-    return ChronosRT_ERROR_NOTFOUND;
+    return ERROR_NOTFOUND;
 }
 
-ChronosRT_status_t ChronosRT_et_aalid_heartbeat(ChronosRT_et_aalid_t* aalid, uint16_t id,
+status_t et_aalid_heartbeat(et_aalid_t* aalid, uint16_t id,
                                                 uint64_t now_ms) {
     if (aalid == NULL || id > aalid->cfg.id_max) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     for (uint32_t i = 0; i <= aalid->mask; i++) {
         et_aalid_entry_t* e = &aalid->table[i];
         if (e->state == ET_AALID_ACTIVE && e->id == id) {
             e->last_hb_ms = now_ms;
-            return ChronosRT_SUCCESS;
+            return SUCCESS;
         }
     }
-    return ChronosRT_ERROR_NOTFOUND;
+    return ERROR_NOTFOUND;
 }
 
-uint32_t ChronosRT_et_aalid_expire(ChronosRT_et_aalid_t* aalid, uint64_t now_ms) {
+uint32_t et_aalid_expire(et_aalid_t* aalid, uint64_t now_ms) {
     if (aalid == NULL) {
         return 0u;
     }
@@ -440,17 +440,17 @@ uint32_t ChronosRT_et_aalid_expire(ChronosRT_et_aalid_t* aalid, uint64_t now_ms)
     return freed;
 }
 
-ChronosRT_status_t ChronosRT_et_aalid_stats(const ChronosRT_et_aalid_t* aalid,
-                                            ChronosRT_et_aalid_stats_t* out) {
+status_t et_aalid_stats(const et_aalid_t* aalid,
+                                            et_aalid_stats_t* out) {
     if (aalid == NULL || out == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     *out = aalid->stats;
     out->occupied = aalid->occupied;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-bool ChronosRT_et_aalid_is_occupied(const ChronosRT_et_aalid_t* aalid, uint16_t id) {
+bool et_aalid_is_occupied(const et_aalid_t* aalid, uint16_t id) {
     if (aalid == NULL || id > aalid->cfg.id_max) {
         return false;
     }
@@ -476,20 +476,20 @@ typedef struct {
     uint64_t last_hb_ms;
 } et_aalid_file_rec_t;
 
-ChronosRT_status_t ChronosRT_et_aalid_save(const ChronosRT_et_aalid_t* aalid, const char* path) {
+status_t et_aalid_save(const et_aalid_t* aalid, const char* path) {
     if (aalid == NULL || path == NULL || path[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     char tmp[1024];
     const int n = snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     if (n < 0 || (size_t)n >= sizeof(tmp)) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     FILE* f = fopen(tmp, "wb");
     if (f == NULL) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     et_aalid_file_hdr_t hdr;
@@ -521,31 +521,31 @@ ChronosRT_status_t ChronosRT_et_aalid_save(const ChronosRT_et_aalid_t* aalid, co
     }
     if (!ok) {
         (void)remove(tmp);
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
     /* Reemplazo atómico: un corte no deja el fichero a medias. */
     if (rename(tmp, path) != 0) {
         (void)remove(tmp);
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_aalid_load(ChronosRT_et_aalid_t* aalid, const char* path) {
+status_t et_aalid_load(et_aalid_t* aalid, const char* path) {
     if (aalid == NULL || path == NULL || path[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     FILE* f = fopen(path, "rb");
     if (f == NULL) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     et_aalid_file_hdr_t hdr;
     if (fread(&hdr, sizeof(hdr), 1u, f) != 1u || hdr.magic != ET_AALID_MAGIC ||
         hdr.version != ET_AALID_VERSION) {
         (void)fclose(f);
-        return ChronosRT_ERROR_CORRUPT;
+        return ERROR_CORRUPT;
     }
 
     /* Estado limpio antes de reconstruir la identidad persistida. */
@@ -554,17 +554,17 @@ ChronosRT_status_t ChronosRT_et_aalid_load(ChronosRT_et_aalid_t* aalid, const ch
     aalid->occupied = 0u;
     aalid->next_free_hint = 0u;
 
-    ChronosRT_status_t st = ChronosRT_SUCCESS;
+    status_t st = SUCCESS;
     for (uint32_t i = 0; i < hdr.count; i++) {
         et_aalid_file_rec_t rec;
         if (fread(&rec, sizeof(rec), 1u, f) != 1u) {
-            st = ChronosRT_ERROR_CORRUPT;
+            st = ERROR_CORRUPT;
             break;
         }
         if (rec.id > aalid->cfg.id_max) {
             continue;
         }
-        const uint32_t h0 = (uint32_t)ChronosRT_et_aalid_candidate(rec.mac) & aalid->mask;
+        const uint32_t h0 = (uint32_t)et_aalid_candidate(rec.mac) & aalid->mask;
         for (uint32_t probe = 0; probe <= aalid->mask; probe++) {
             const uint32_t idx = (h0 + probe) & aalid->mask;
             if (aalid->table[idx].state != ET_AALID_ACTIVE) {

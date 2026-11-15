@@ -92,7 +92,7 @@ static int ec_open_one(const char* ifname, int* ifindex_out, uint8_t mac[6]) {
         return -1;
     }
 
-    int fd = socket(AF_PACKET, SOCK_RAW, htons((uint16_t)ChronosRT_EC_ETHERTYPE));
+    int fd = socket(AF_PACKET, SOCK_RAW, htons((uint16_t)EC_ETHERTYPE));
     if (fd < 0) {
         return -1;
     }
@@ -100,7 +100,7 @@ static int ec_open_one(const char* ifname, int* ifindex_out, uint8_t mac[6]) {
     struct sockaddr_ll addr;
     memset(&addr, 0, sizeof(addr));
     addr.sll_family = AF_PACKET;
-    addr.sll_protocol = htons((uint16_t)ChronosRT_EC_ETHERTYPE);
+    addr.sll_protocol = htons((uint16_t)EC_ETHERTYPE);
     addr.sll_ifindex = (int)ifindex;
     if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         close(fd);
@@ -139,9 +139,9 @@ static int ec_open_one(const char* ifname, int* ifindex_out, uint8_t mac[6]) {
     return fd;
 }
 
-ChronosRT_status_t ec_socket_open(ec_port_t* port, const char* ifname) {
+status_t ec_socket_open(ec_port_t* port, const char* ifname) {
     if (!port || !ifname || ifname[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
     memset(port, 0, sizeof(*port));
@@ -151,24 +151,24 @@ ChronosRT_status_t ec_socket_open(ec_port_t* port, const char* ifname) {
     int ifindex = 0;
     int fd = ec_open_one(ifname, &ifindex, port->mac);
     if (fd < 0) {
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     port->fd = fd;
     port->ifindex = ifindex;
     strncpy(port->ifname, ifname, sizeof(port->ifname) - 1);
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ec_socket_open_redundant(ec_port_t* port, const char* ifname,
+status_t ec_socket_open_redundant(ec_port_t* port, const char* ifname,
                                             const char* redundant_ifname) {
     if (!port || !ifname || !redundant_ifname ||
         ifname[0] == '\0' || redundant_ifname[0] == '\0') {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
 
-    ChronosRT_status_t st = ec_socket_open(port, ifname);
-    if (st != ChronosRT_SUCCESS) {
+    status_t st = ec_socket_open(port, ifname);
+    if (st != SUCCESS) {
         return st;
     }
 
@@ -176,14 +176,14 @@ ChronosRT_status_t ec_socket_open_redundant(ec_port_t* port, const char* ifname,
     int fd = ec_open_one(redundant_ifname, &ifindex, port->mac_red);
     if (fd < 0) {
         ec_socket_close(port);
-        return ChronosRT_ERROR_IO;
+        return ERROR_IO;
     }
 
     port->fd_red = fd;
     port->ifindex_red = ifindex;
     port->redundant = true;
     strncpy(port->red_ifname, redundant_ifname, sizeof(port->red_ifname) - 1);
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
 void ec_socket_close(ec_port_t* port) {
@@ -275,7 +275,7 @@ int ec_socket_recv(ec_port_t* port, uint8_t* frame, uint32_t bufsize, uint32_t t
                 continue;   /* trama corta o ajena: descártala */
             }
             uint16_t eth_type = (uint16_t)((frame[12] << 8) | frame[13]);
-            if (eth_type != ChronosRT_EC_ETHERTYPE) {
+            if (eth_type != EC_ETHERTYPE) {
                 continue;   /* no es EtherCAT */
             }
             port->frames_rx++;
@@ -288,7 +288,7 @@ int ec_socket_recv(ec_port_t* port, uint8_t* frame, uint32_t bufsize, uint32_t t
 /* Enumeración de interfaces (API pública)                             */
 /* ------------------------------------------------------------------ */
 
-static ChronosRT_ec_interface_t s_ifaces[ChronosRT_EC_MAX_INTERFACES];
+static ec_interface_t s_ifaces[EC_MAX_INTERFACES];
 static uint32_t s_iface_count = 0u;
 static bool     s_iface_enumerated = false;
 
@@ -304,7 +304,7 @@ static void ec_enumerate_interfaces(void) {
         return;
     }
 
-    for (struct ifaddrs* it = list; it && s_iface_count < ChronosRT_EC_MAX_INTERFACES; it = it->ifa_next) {
+    for (struct ifaddrs* it = list; it && s_iface_count < EC_MAX_INTERFACES; it = it->ifa_next) {
         if (!it->ifa_addr || it->ifa_addr->sa_family != AF_PACKET) {
             continue;
         }
@@ -321,7 +321,7 @@ static void ec_enumerate_interfaces(void) {
             continue;
         }
 
-        ChronosRT_ec_interface_t* e = &s_ifaces[s_iface_count];
+        ec_interface_t* e = &s_ifaces[s_iface_count];
         memset(e, 0, sizeof(*e));
         strncpy(e->name, name, sizeof(e->name) - 1);
         e->ifindex = (int)if_nametoindex(name);
@@ -338,12 +338,12 @@ static void ec_enumerate_interfaces(void) {
     freeifaddrs(list);
 }
 
-uint32_t ChronosRT_ec_interface_count(void) {
+uint32_t ec_interface_count(void) {
     ec_enumerate_interfaces();
     return s_iface_count;
 }
 
-const ChronosRT_ec_interface_t* ChronosRT_ec_interface(uint32_t index) {
+const ec_interface_t* ec_interface(uint32_t index) {
     ec_enumerate_interfaces();
     if (index >= s_iface_count) {
         return NULL;
@@ -351,7 +351,7 @@ const ChronosRT_ec_interface_t* ChronosRT_ec_interface(uint32_t index) {
     return &s_ifaces[index];
 }
 
-int ChronosRT_ec_interface_index(const char* name) {
+int ec_interface_index(const char* name) {
     if (!name) {
         return -1;
     }

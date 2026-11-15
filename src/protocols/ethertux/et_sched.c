@@ -11,7 +11,7 @@
  * más un sesgo acotado. P0 es "express" y puede transmitir en CUALQUIER ventana
  * (prioridad absoluta); el resto solo en la suya.
  *
- * Si un nodo cae, `ChronosRT_et_sched_remove_node()` libera sus ranuras para que
+ * Si un nodo cae, `et_sched_remove_node()` libera sus ranuras para que
  * el servidor pueda reasignarlas.
  */
 #include "et_internal.h"
@@ -19,8 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-ChronosRT_et_sched_t* ChronosRT_et_sched_create(uint32_t cycle_ns, uint64_t link_bps) {
-    ChronosRT_et_sched_t* s = (ChronosRT_et_sched_t*)calloc(1u, sizeof(*s));
+et_sched_t* et_sched_create(uint32_t cycle_ns, uint64_t link_bps) {
+    et_sched_t* s = (et_sched_t*)calloc(1u, sizeof(*s));
     if (s == NULL) {
         return NULL;
     }
@@ -40,52 +40,52 @@ ChronosRT_et_sched_t* ChronosRT_et_sched_create(uint32_t cycle_ns, uint64_t link
     return s;
 }
 
-void ChronosRT_et_sched_destroy(ChronosRT_et_sched_t* sched) {
+void et_sched_destroy(et_sched_t* sched) {
     free(sched);
 }
 
-ChronosRT_status_t ChronosRT_et_sched_set_windows(ChronosRT_et_sched_t* sched,
+status_t et_sched_set_windows(et_sched_t* sched,
                                                   uint32_t control_ns,
                                                   uint32_t deterministic_ns,
                                                   uint32_t rate_ns,
                                                   uint32_t best_effort_ns) {
     if (sched == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     uint64_t sum = (uint64_t)control_ns + deterministic_ns + rate_ns + best_effort_ns;
     if (sum != (uint64_t)sched->cycle_ns) {
-        return ChronosRT_ERROR_INVALID;   /* las ventanas deben cubrir el ciclo */
+        return ERROR_INVALID;   /* las ventanas deben cubrir el ciclo */
     }
     sched->window_ns[ET_WINDOW_CONTROL]       = control_ns;
     sched->window_ns[ET_WINDOW_DETERMINISTIC] = deterministic_ns;
     sched->window_ns[ET_WINDOW_RATE]          = rate_ns;
     sched->window_ns[ET_WINDOW_BEST_EFFORT]   = best_effort_ns;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_sched_add_slot(ChronosRT_et_sched_t* sched,
+status_t et_sched_add_slot(et_sched_t* sched,
                                                uint8_t priority, uint16_t node,
                                                uint16_t frame_bytes,
                                                uint32_t offset_ns) {
-    if (sched == NULL || priority >= ChronosRT_ET_PRIORITIES || frame_bytes == 0u) {
-        return ChronosRT_ERROR_INVALID;
+    if (sched == NULL || priority >= ET_PRIORITIES || frame_bytes == 0u) {
+        return ERROR_INVALID;
     }
     if (offset_ns >= sched->cycle_ns) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (sched->slot_count >= ET_MAX_SLOTS) {
-        return ChronosRT_ERROR_FULL;
+        return ERROR_FULL;
     }
-    ChronosRT_et_slot_t* s = &sched->slots[sched->slot_count];
+    et_slot_t* s = &sched->slots[sched->slot_count];
     s->priority = priority;
     s->node = node;
     s->frame_bytes = frame_bytes;
     s->offset_ns = offset_ns;
     sched->slot_count++;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-int ChronosRT_et_sched_remove_node(ChronosRT_et_sched_t* sched, uint16_t node) {
+int et_sched_remove_node(et_sched_t* sched, uint16_t node) {
     if (sched == NULL) {
         return 0;
     }
@@ -105,12 +105,12 @@ int ChronosRT_et_sched_remove_node(ChronosRT_et_sched_t* sched, uint16_t node) {
     return removed;
 }
 
-uint32_t ChronosRT_et_sched_slot_count(const ChronosRT_et_sched_t* sched) {
+uint32_t et_sched_slot_count(const et_sched_t* sched) {
     return (sched != NULL) ? sched->slot_count : 0u;
 }
 
-bool ChronosRT_et_sched_slot(const ChronosRT_et_sched_t* sched, uint32_t index,
-                             ChronosRT_et_slot_t* out) {
+bool et_sched_slot(const et_sched_t* sched, uint32_t index,
+                             et_slot_t* out) {
     if (sched == NULL || out == NULL || index >= sched->slot_count) {
         return false;
     }
@@ -118,11 +118,11 @@ bool ChronosRT_et_sched_slot(const ChronosRT_et_sched_t* sched, uint32_t index,
     return true;
 }
 
-uint32_t ChronosRT_et_sched_cycle_ns(const ChronosRT_et_sched_t* sched) {
+uint32_t et_sched_cycle_ns(const et_sched_t* sched) {
     return (sched != NULL) ? sched->cycle_ns : 0u;
 }
 
-uint8_t ChronosRT_et_sched_window_at(const ChronosRT_et_sched_t* sched, uint64_t now_ns) {
+uint8_t et_sched_window_at(const et_sched_t* sched, uint64_t now_ns) {
     if (sched == NULL || sched->cycle_ns == 0u) {
         return ET_WINDOW_BEST_EFFORT;
     }
@@ -145,28 +145,28 @@ uint8_t ChronosRT_et_sched_window_at(const ChronosRT_et_sched_t* sched, uint64_t
     return ET_WINDOW_BEST_EFFORT;
 }
 
-bool ChronosRT_et_sched_can_transmit(const ChronosRT_et_sched_t* sched,
+bool et_sched_can_transmit(const et_sched_t* sched,
                                       uint8_t priority, uint64_t now_ns) {
-    if (sched == NULL || priority >= ChronosRT_ET_PRIORITIES) {
+    if (sched == NULL || priority >= ET_PRIORITIES) {
         return false;
     }
     /* P0 es express: prioridad absoluta en cualquier ventana. */
-    if (priority == ChronosRT_ET_P0) {
+    if (priority == ET_P0) {
         return true;
     }
 
-    uint8_t w = ChronosRT_et_sched_window_at(sched, now_ns);
+    uint8_t w = et_sched_window_at(sched, now_ns);
     switch (priority) {
-        case ChronosRT_ET_P1: return w == ET_WINDOW_CONTROL;
-        case ChronosRT_ET_P2: return w == ET_WINDOW_DETERMINISTIC;
-        case ChronosRT_ET_P3:
-        case ChronosRT_ET_P4: return w == ET_WINDOW_RATE;
-        case ChronosRT_ET_P5: return w == ET_WINDOW_BEST_EFFORT;
+        case ET_P1: return w == ET_WINDOW_CONTROL;
+        case ET_P2: return w == ET_WINDOW_DETERMINISTIC;
+        case ET_P3:
+        case ET_P4: return w == ET_WINDOW_RATE;
+        case ET_P5: return w == ET_WINDOW_BEST_EFFORT;
         default:              return false;
     }
 }
 
-uint64_t ChronosRT_et_tx_time_ns(uint32_t frame_bytes, uint64_t link_bps) {
+uint64_t et_tx_time_ns(uint32_t frame_bytes, uint64_t link_bps) {
     if (link_bps == 0u) {
         link_bps = 1000000000ull;
     }

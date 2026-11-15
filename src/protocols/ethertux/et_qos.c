@@ -25,12 +25,12 @@
 #include <string.h>
 
 /* Cadena de degradación ante agotamiento de tokens (-1 = no degradable). */
-static const int8_t s_degrade[ChronosRT_ET_PRIORITIES] = {
+static const int8_t s_degrade[ET_PRIORITIES] = {
     -1,                                  /* P0: backpressure */
-    ChronosRT_ET_P2,                     /* P1 -> P2         */
-    ChronosRT_ET_P4,                     /* P2 -> P4         */
-    ChronosRT_ET_P4,                     /* P3 -> P4         */
-    ChronosRT_ET_P5,                     /* P4 -> P5         */
+    ET_P2,                     /* P1 -> P2         */
+    ET_P4,                     /* P2 -> P4         */
+    ET_P4,                     /* P3 -> P4         */
+    ET_P5,                     /* P4 -> P5         */
     -1                                   /* P5: descarte     */
 };
 
@@ -41,7 +41,7 @@ static int64_t clamp_tokens(int64_t tokens, uint32_t burst) {
     return tokens;
 }
 
-static void bucket_refill(et_bucket_t* b, const ChronosRT_et_bucket_cfg_t* cfg,
+static void bucket_refill(et_bucket_t* b, const et_bucket_cfg_t* cfg,
                           uint64_t rate_q32, uint64_t now_ns) {
     if (cfg->rate_bytes_per_sec == 0u || cfg->burst_bytes == 0u) {
         b->tokens = 0;
@@ -68,21 +68,21 @@ static void bucket_refill(et_bucket_t* b, const ChronosRT_et_bucket_cfg_t* cfg,
     b->tokens = clamp_tokens(b->tokens + add, cfg->burst_bytes);
 }
 
-static void qos_refill_all(ChronosRT_et_qos_t* q, uint64_t now_ns) {
-    for (unsigned i = 0; i < ChronosRT_ET_PRIORITIES; i++) {
+static void qos_refill_all(et_qos_t* q, uint64_t now_ns) {
+    for (unsigned i = 0; i < ET_PRIORITIES; i++) {
         bucket_refill(&q->tb[i], &q->cfg.bucket[i], q->rate_q32[i], now_ns);
     }
 }
 
 /* Lazy refill: solo actualiza el bucket solicitado. Los demás se refillan
  * periódicamente (cada 1 ms) o cuando se consultan vía backpressure. */
-static void qos_refill_lazy(ChronosRT_et_qos_t* q, uint8_t cls, uint64_t now_ns) {
+static void qos_refill_lazy(et_qos_t* q, uint8_t cls, uint64_t now_ns) {
     bucket_refill(&q->tb[cls], &q->cfg.bucket[cls], q->rate_q32[cls], now_ns);
     q->last_refill_ns = now_ns;
 }
 
 /* Ocupación del bucket en porcentaje (100 % = vacío), sin división. */
-static uint32_t bucket_occupancy(const ChronosRT_et_qos_t* q, unsigned cls) {
+static uint32_t bucket_occupancy(const et_qos_t* q, unsigned cls) {
     uint32_t burst = q->cfg.bucket[cls].burst_bytes;
     if (burst == 0u) {
         return 100u;
@@ -97,9 +97,9 @@ static uint32_t bucket_occupancy(const ChronosRT_et_qos_t* q, unsigned cls) {
     return (uint32_t)(((uint64_t)used * q->inv_burst_q32[cls]) >> 32);
 }
 
-static void qos_update_lapm(ChronosRT_et_qos_t* q) {
+static void qos_update_lapm(et_qos_t* q) {
     if (!q->cfg.lapm_enabled) {
-        for (unsigned i = 0; i < ChronosRT_ET_PRIORITIES; i++) {
+        for (unsigned i = 0; i < ET_PRIORITIES; i++) {
             q->eff[i] = (uint8_t)i;
         }
         q->lapm_active = false;
@@ -107,12 +107,12 @@ static void qos_update_lapm(ChronosRT_et_qos_t* q) {
     }
 
     bool active = false;
-    for (unsigned cls = ChronosRT_ET_P3; cls <= ChronosRT_ET_P4; cls++) {
+    for (unsigned cls = ET_P3; cls <= ET_P4; cls++) {
         uint32_t occ = bucket_occupancy(q, cls);
         if (q->eff[cls] == (uint8_t)cls) {
             if (occ >= q->cfg.lapm_high_percent) {
-                q->eff[cls] = (uint8_t)((cls == ChronosRT_ET_P3) ? ChronosRT_ET_P4
-                                                                 : ChronosRT_ET_P5);
+                q->eff[cls] = (uint8_t)((cls == ET_P3) ? ET_P4
+                                                                 : ET_P5);
                 q->stats.degraded++;
             }
         } else if (occ <= q->cfg.lapm_low_percent) {
@@ -129,25 +129,25 @@ static void qos_update_lapm(ChronosRT_et_qos_t* q) {
 /* API pública                                                         */
 /* ------------------------------------------------------------------ */
 
-void ChronosRT_et_qos_default_config(ChronosRT_et_qos_config_t* cfg) {
+void et_qos_default_config(et_qos_config_t* cfg) {
     if (cfg == NULL) {
         return;
     }
     memset(cfg, 0, sizeof(*cfg));
 
     /* Reparto para un enlace de 1 Gbps (125 MB/s) sin sobre-suscripción. */
-    cfg->bucket[ChronosRT_ET_P0].rate_bytes_per_sec =   5u * 1000u * 1000u;
-    cfg->bucket[ChronosRT_ET_P0].burst_bytes        =   4096u;
-    cfg->bucket[ChronosRT_ET_P1].rate_bytes_per_sec =   5u * 1000u * 1000u;
-    cfg->bucket[ChronosRT_ET_P1].burst_bytes        =   8192u;
-    cfg->bucket[ChronosRT_ET_P2].rate_bytes_per_sec =  50u * 1000u * 1000u;
-    cfg->bucket[ChronosRT_ET_P2].burst_bytes        =  65536u;
-    cfg->bucket[ChronosRT_ET_P3].rate_bytes_per_sec =  30u * 1000u * 1000u;
-    cfg->bucket[ChronosRT_ET_P3].burst_bytes        = 131072u;
-    cfg->bucket[ChronosRT_ET_P4].rate_bytes_per_sec =  20u * 1000u * 1000u;
-    cfg->bucket[ChronosRT_ET_P4].burst_bytes        = 131072u;
-    cfg->bucket[ChronosRT_ET_P5].rate_bytes_per_sec =  15u * 1000u * 1000u;
-    cfg->bucket[ChronosRT_ET_P5].burst_bytes        = 262144u;
+    cfg->bucket[ET_P0].rate_bytes_per_sec =   5u * 1000u * 1000u;
+    cfg->bucket[ET_P0].burst_bytes        =   4096u;
+    cfg->bucket[ET_P1].rate_bytes_per_sec =   5u * 1000u * 1000u;
+    cfg->bucket[ET_P1].burst_bytes        =   8192u;
+    cfg->bucket[ET_P2].rate_bytes_per_sec =  50u * 1000u * 1000u;
+    cfg->bucket[ET_P2].burst_bytes        =  65536u;
+    cfg->bucket[ET_P3].rate_bytes_per_sec =  30u * 1000u * 1000u;
+    cfg->bucket[ET_P3].burst_bytes        = 131072u;
+    cfg->bucket[ET_P4].rate_bytes_per_sec =  20u * 1000u * 1000u;
+    cfg->bucket[ET_P4].burst_bytes        = 131072u;
+    cfg->bucket[ET_P5].rate_bytes_per_sec =  15u * 1000u * 1000u;
+    cfg->bucket[ET_P5].burst_bytes        = 262144u;
 
     cfg->pause_percent     = 80u;
     cfg->lapm_enabled      = true;
@@ -155,44 +155,44 @@ void ChronosRT_et_qos_default_config(ChronosRT_et_qos_config_t* cfg) {
     cfg->lapm_low_percent  = 60u;
 }
 
-ChronosRT_et_qos_t* ChronosRT_et_qos_create(void) {
-    ChronosRT_et_qos_t* q = (ChronosRT_et_qos_t*)calloc(1u, sizeof(*q));
+et_qos_t* et_qos_create(void) {
+    et_qos_t* q = (et_qos_t*)calloc(1u, sizeof(*q));
     if (q == NULL) {
         return NULL;
     }
-    ChronosRT_et_qos_config_t cfg;
-    ChronosRT_et_qos_default_config(&cfg);
-    if (ChronosRT_et_qos_configure(q, &cfg) != ChronosRT_SUCCESS) {
+    et_qos_config_t cfg;
+    et_qos_default_config(&cfg);
+    if (et_qos_configure(q, &cfg) != SUCCESS) {
         free(q);
         return NULL;
     }
     return q;
 }
 
-void ChronosRT_et_qos_destroy(ChronosRT_et_qos_t* qos) {
+void et_qos_destroy(et_qos_t* qos) {
     free(qos);
 }
 
-ChronosRT_status_t ChronosRT_et_qos_configure(ChronosRT_et_qos_t* qos,
-                                              const ChronosRT_et_qos_config_t* cfg) {
+status_t et_qos_configure(et_qos_t* qos,
+                                              const et_qos_config_t* cfg) {
     if (qos == NULL || cfg == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (cfg->pause_percent < 1u || cfg->pause_percent > 100u) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     if (cfg->lapm_high_percent <= cfg->lapm_low_percent ||
         cfg->lapm_high_percent > 100u) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
-    for (unsigned i = 0; i < ChronosRT_ET_PRIORITIES; i++) {
+    for (unsigned i = 0; i < ET_PRIORITIES; i++) {
         if (cfg->bucket[i].burst_bytes == 0u || cfg->bucket[i].rate_bytes_per_sec == 0u) {
-            return ChronosRT_ERROR_INVALID;
+            return ERROR_INVALID;
         }
     }
 
     qos->cfg = *cfg;
-    for (unsigned i = 0; i < ChronosRT_ET_PRIORITIES; i++) {
+    for (unsigned i = 0; i < ET_PRIORITIES; i++) {
         qos->tb[i].tokens = (int64_t)cfg->bucket[i].burst_bytes;
         qos->tb[i].last_ns = 0u;
         qos->eff[i] = (uint8_t)i;
@@ -204,17 +204,17 @@ ChronosRT_status_t ChronosRT_et_qos_configure(ChronosRT_et_qos_t* qos,
     qos->lapm_active = false;
     qos->last_refill_ns = 0u;
     qos->last_lazy_ns = 0u;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-ChronosRT_status_t ChronosRT_et_qos_admit(ChronosRT_et_qos_t* qos,
+status_t et_qos_admit(et_qos_t* qos,
                                           uint8_t priority, uint32_t bytes,
                                           uint64_t now_ns) {
-    if (qos == NULL || priority >= ChronosRT_ET_PRIORITIES) {
-        return ChronosRT_ERROR_INVALID;
+    if (qos == NULL || priority >= ET_PRIORITIES) {
+        return ERROR_INVALID;
     }
 
-    uint64_t now = (now_ns != 0u) ? now_ns : ChronosRT_tx_timestamp_ns();
+    uint64_t now = (now_ns != 0u) ? now_ns : tx_timestamp_ns();
 
     /* Lazy refill: solo refill completo si han pasado > 1 ms desde el último,
      * si no refillamos solo el bucket de la clase efectiva. */
@@ -234,7 +234,7 @@ ChronosRT_status_t ChronosRT_et_qos_admit(ChronosRT_et_qos_t* qos,
             qos->tb[cls].tokens -= (int64_t)bytes;
             qos->stats.admitted++;
             qos->stats.bytes_admitted += bytes;
-            return ChronosRT_SUCCESS;
+            return SUCCESS;
         }
         int next = (int)s_degrade[cls];
         if (next < 0 || next == cls) {
@@ -244,55 +244,55 @@ ChronosRT_status_t ChronosRT_et_qos_admit(ChronosRT_et_qos_t* qos,
         qos->stats.degraded++;
     }
 
-    if (priority == ChronosRT_ET_P5) {
+    if (priority == ET_P5) {
         qos->stats.dropped++;
-        return ChronosRT_ERROR_DROPPED;
+        return ERROR_DROPPED;
     }
     qos->stats.backpressure++;
-    return ChronosRT_ERROR_BACKPRESSURE;
+    return ERROR_BACKPRESSURE;
 }
 
-bool ChronosRT_et_qos_backpressure(const ChronosRT_et_qos_t* qos, uint8_t priority) {
-    if (qos == NULL || priority >= ChronosRT_ET_PRIORITIES) {
+bool et_qos_backpressure(const et_qos_t* qos, uint8_t priority) {
+    if (qos == NULL || priority >= ET_PRIORITIES) {
         return true;
     }
     /* P0 y P1 nunca se pausan por sí mismos: son la clase crítica. */
-    if (priority <= ChronosRT_ET_P1) {
+    if (priority <= ET_P1) {
         return false;
     }
-    if (priority >= ChronosRT_ET_P2 &&
-        bucket_occupancy(qos, ChronosRT_ET_P0) >= qos->cfg.pause_percent) {
+    if (priority >= ET_P2 &&
+        bucket_occupancy(qos, ET_P0) >= qos->cfg.pause_percent) {
         return true;
     }
-    if (priority >= ChronosRT_ET_P3 &&
-        bucket_occupancy(qos, ChronosRT_ET_P1) >= ET_PAUSE_P1_AT) {
+    if (priority >= ET_P3 &&
+        bucket_occupancy(qos, ET_P1) >= ET_PAUSE_P1_AT) {
         return true;
     }
-    if (priority >= ChronosRT_ET_P4 &&
-        bucket_occupancy(qos, ChronosRT_ET_P2) >= ET_PAUSE_P2_AT) {
+    if (priority >= ET_P4 &&
+        bucket_occupancy(qos, ET_P2) >= ET_PAUSE_P2_AT) {
         return true;
     }
     return false;
 }
 
-uint8_t ChronosRT_et_qos_effective_priority(const ChronosRT_et_qos_t* qos,
+uint8_t et_qos_effective_priority(const et_qos_t* qos,
                                             uint8_t priority) {
-    if (qos == NULL || priority >= ChronosRT_ET_PRIORITIES) {
+    if (qos == NULL || priority >= ET_PRIORITIES) {
         return priority;
     }
     return qos->eff[priority];
 }
 
-ChronosRT_status_t ChronosRT_et_qos_stats(const ChronosRT_et_qos_t* qos,
-                                          ChronosRT_et_qos_stats_t* out) {
+status_t et_qos_stats(const et_qos_t* qos,
+                                          et_qos_stats_t* out) {
     if (qos == NULL || out == NULL) {
-        return ChronosRT_ERROR_INVALID;
+        return ERROR_INVALID;
     }
     *out = qos->stats;
-    return ChronosRT_SUCCESS;
+    return SUCCESS;
 }
 
-void ChronosRT_et_qos_reset_stats(ChronosRT_et_qos_t* qos) {
+void et_qos_reset_stats(et_qos_t* qos) {
     if (qos != NULL) {
         memset(&qos->stats, 0, sizeof(qos->stats));
     }
