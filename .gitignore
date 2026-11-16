@@ -42,3 +42,5 @@ Thumbs.db
 
 
 docs/no/
+# TuxedoRT-Mojo libtuxwarp (symbolic link)
+/mnt/netac/MI_MUNDO/PROYECTOS/KLIPPER/PROYECTOS/TuxedoRT-Mojo/libtuxrt_core/libtuxwarp

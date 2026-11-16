@@ -1,0 +1,39 @@
+{
+  "name": "libtuxwarp",
+  "version": "0.1.0",
+  "description": "TuxedoRT Mojo - libtuxwarp real-time warp library for high-performance packet processing and CRC-32C acceleration",
+  "main": "lib/libtuxwarp.so",
+  "module": "lib/libtuxwarp.so",
+  "types": "include/libtuxwarp/libtuxwarp.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TuxedoRT-Mojo/libtuxwarp.git"
+  },
+  "keywords": [
+    "real-time",
+    "packet-processing",
+    "CRC-32C",
+    "EtherCAT",
+    "high-performance"
+  ],
+  "scripts": {
+    "build": "echo 'SDK is pre-built, use the shared library directly'",
+    "test": "echo 'No tests in SDK package'"
+  },
+  "author": "TuxedoRT-Mojo Project",
+  "bugs": {
+    "url": "https://github.com/TuxedoRT-Mojo/libtuxwarp/issues"
+  },
+  "homepage": "https://github.com/TuxedoRT-Mojo/libtuxwarp#readme",
+  "os": ["linux"],
+  "cpu": ["x86_64", "aarch64"],
+  "files": [
+    "include/",
+    "lib/",
+    "share/"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
